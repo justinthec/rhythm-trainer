@@ -97,6 +97,21 @@ input:focus { outline: none; border-color: var(--accent); }
 
 /* game */
 .game-top { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-bottom: 0.6rem; }
+
+.tap-pad {
+  margin-top: 0.8rem; padding: 1.3rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
+  border: 2px dashed var(--border); border-radius: 12px;
+  cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: manipulation;
+}
+.tap-pad:active { transform: scale(0.985); }
+.tap-pad-label { font-weight: 800; font-size: 1.3rem; letter-spacing: 0.25em; }
+.tap-pad-sub { font-size: 0.8rem; color: var(--muted); }
+.tap-pad.flash { animation: pad-flash 0.18s ease-out; }
+@keyframes pad-flash {
+  0% { background: rgba(61, 220, 132, 0.22); border-color: var(--accent); }
+  100% { background: transparent; }
+}
 .game-top .back { margin: 0; }
 .game-song { color: var(--muted); font-size: 0.9rem; }
 .game-buttons { display: flex; gap: 0.4rem; }
@@ -172,6 +187,7 @@ input:focus { outline: none; border-color: var(--accent); }
 .results-actions { display: flex; gap: 0.7rem; margin-top: 1rem; }
 
 .chart { width: 100%; height: 160px; background: var(--panel); border-radius: 10px; margin: 0.4rem 0 1rem; }
+.chart-title { font-size: 0.8rem; color: var(--muted); text-align: left; margin-top: 0.6rem; }
 
 /* dashboard */
 .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.7rem; margin: 1rem 0; }

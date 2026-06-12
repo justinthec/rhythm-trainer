@@ -186,6 +186,68 @@ console.log('— trend regression —');
   assert(trendVerdict(slope, r, 10) === 'steady', 'too few taps → steady');
 }
 
+console.log('— grid adapts to tapped subdivision —');
+{
+  // HUMBLE. scenario: listed 75 BPM (T=800) but tapped at 150 BPM (400ms).
+  const eng = createEngine({ bpm: 75, anchorTapCount: 8 });
+  let res = null;
+  for (let k = 0; k < 8; k++) res = eng.addTap(1000 + k * 400 + jitter(15));
+  assert(res.type === 'locked', 'double-time taps lock');
+  assert(res.gridBpm === 150, `grid locks at 150 BPM (got ${res.gridBpm})`);
+  approx(eng.period, 400, 1, 'effective period is the tapped subdivision');
+  const scored = eng.addTap(1000 + 8 * 400 + 10);
+  assert(scored.type === 'tap' && scored.rating !== 'miss', 'scoring works on the adapted grid');
+}
+{
+  // Half-time tapping: listed 150 BPM (T=400) but tapped every 800ms.
+  const eng = createEngine({ bpm: 150, anchorTapCount: 8 });
+  let res = null;
+  for (let k = 0; k < 8; k++) res = eng.addTap(500 + k * 800 + jitter(15));
+  assert(res.type === 'locked' && res.gridBpm === 75, 'half-time taps lock at 75 BPM');
+}
+{
+  // Tapped period that matches no clean ratio of the base tempo must fail.
+  const eng = createEngine({ bpm: 100, anchorTapCount: 8 }); // T=600
+  let res = null;
+  for (let k = 0; k < 8; k++) res = eng.addTap(500 + k * 437);
+  assert(res.type === 'anchor-failed', 'off-ratio tempo fails to lock');
+}
+{
+  // Two-handed 32nds: 75 BPM listed, tapping every 100ms (1/8 of the period).
+  const eng = createEngine({ bpm: 75, anchorTapCount: 8 });
+  let res = null;
+  for (let k = 0; k < 8; k++) res = eng.addTap(1000 + k * 100 + jitter(8));
+  assert(res.type === 'locked', '32nd-note taps lock');
+  assert(res.gridBpm === 600, `grid locks at 600 BPM (got ${res.gridBpm})`);
+  const scored = eng.addTap(1000 + 8 * 100 + 5);
+  assert(scored.type === 'tap' && scored.rating !== 'miss', '32nd taps are scored');
+}
+{
+  // Subdivisions faster than MIN_GRID_PERIOD are rejected: 16ths at 171 BPM
+  // ≈ 88ms — fast enough to pass the refractory, too fast for a grid.
+  const eng = createEngine({ bpm: 171, anchorTapCount: 8 });
+  let res = null;
+  for (let k = 0; k < 8; k++) res = eng.addTap(500 + (k * 60000) / 171 / 4);
+  assert(res.type === 'anchor-failed', 'untappably fast subdivision rejected');
+}
+
+console.log('— re-anchor keeps score, replaces grid —');
+{
+  const eng = createEngine({ bpm: 120, anchorTapCount: 4 }); // T=500
+  for (let k = 0; k < 4; k++) eng.addTap(1000 + k * 500);
+  eng.addTap(1000 + 4 * 500 + 30); // one scored tap
+  const before = eng.getStats();
+  eng.reAnchor();
+  assert(eng.state === 'anchoring', 're-anchor returns to anchoring');
+  let res = null;
+  for (let k = 0; k < 4; k++) res = eng.addTap(4000 + k * 500 + 250); // new phase, +250ms
+  assert(res.type === 'locked', 'locks again after re-anchor');
+  const after = eng.getStats();
+  assert(after.score === before.score && after.tapCount === before.tapCount, 'score and stats preserved');
+  const t2 = eng.addTap(4000 + 4 * 500 + 250);
+  assert(t2.type === 'tap' && t2.rating === 'perfect', 'taps score perfectly on the new grid');
+}
+
 console.log('— grades —');
 {
   assert(gradeFor(95) === 'S' && gradeFor(94.9) === 'A', 'S/A boundary');

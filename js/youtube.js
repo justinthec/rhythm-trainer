@@ -9,7 +9,10 @@
 // performance.now() timestamp into accurate video time.
 
 const POLL_MS = 50;
-const MAX_EDGES = 20;
+// Edge cadence varies by browser: some report getCurrentTime() in ~250ms
+// chunks (4 edges/s), others update it every poll (20 edges/s). Evict by age,
+// not count, so the buffer always spans enough time to fit a line.
+const EDGE_WINDOW_MS = 5000;
 const RESIDUAL_LIMIT = 120; // ms; a bigger jump means seek/ad/rate change
 const MIN_EDGES = 4;
 const MIN_SPAN_MS = 1000;
@@ -101,7 +104,7 @@ export function createVideoClock({ container, videoId, onStateChange, onError, o
       }
     }
     edges.push({ p, v: raw });
-    if (edges.length > MAX_EDGES) edges.shift();
+    while (edges.length && p - edges[0].p > EDGE_WINDOW_MS) edges.shift();
     refit();
   }
 

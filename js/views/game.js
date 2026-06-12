@@ -4,7 +4,7 @@ import { findSong } from '../songs.js';
 import { getData, update, addSession, newId } from '../storage.js';
 import { createEngine } from '../engine.js';
 import { createVideoClock, PlayerState } from '../youtube.js';
-import { drawHistogram } from '../charts.js';
+import { drawHistogram, drawAccuracyTimeline } from '../charts.js';
 
 const BLIND_MODES = {
   off: { label: 'Off', desc: 'Full audio the whole song.' },
@@ -118,6 +118,7 @@ function renderPlayPanel() {
       <a class="back" href="#/select">← Quit</a>
       <div class="game-song">${esc(song.title)} · ${song.bpm} BPM</div>
       <div class="game-buttons">
+        <button id="reAnchorBtn" class="btn small" title="Redo the lock-in taps — score is kept">↻ Re-lock</button>
         <button id="pauseBtn" class="btn small">⏸</button>
         <button id="finishBtn" class="btn small">Finish</button>
       </div>
@@ -131,6 +132,10 @@ function renderPlayPanel() {
         <div class="blind-blip" id="blindBlip"></div>
       </div>
       <div class="debug-overlay hidden" id="debugOverlay"></div>
+    </div>
+    <div class="tap-pad" id="tapPad">
+      <span class="tap-pad-label">TAP</span>
+      <span class="tap-pad-sub">click here · Space · or F + J for fast subdivisions</span>
     </div>
     <div class="hud">
       <div class="status-line" id="statusLine">Loading video…</div>
@@ -151,10 +156,11 @@ function renderPlayPanel() {
       <div class="toast hidden" id="toast"></div>
     </div>
   `;
-  root.querySelector('#clickShield').addEventListener('pointerdown', (e) => {
+  root.querySelector('#tapPad').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     doTap(normalizeStamp(e));
   });
+  root.querySelector('#reAnchorBtn').addEventListener('click', reAnchorNow);
   root.querySelector('#pauseBtn').addEventListener('click', togglePause);
   root.querySelector('#finishBtn').addEventListener('click', () => finishSession('finished'));
 }
@@ -254,6 +260,24 @@ function startGame(blindMode) {
   }, 500);
 
   rafId = requestAnimationFrame(tick);
+}
+
+// Redo the lock-in taps without losing score — for when the initial anchor
+// was sloppy and every later tap is scored against a misaligned grid.
+function reAnchorNow() {
+  if (!engine || (phase !== 'anchoring' && phase !== 'tracking')) return;
+  if (blind.active) exitBlind(true);
+  blind.armed = false; // re-arms after the new lock
+  blind.nextStart = null;
+  blind.windowEnd = null;
+  engine.reAnchor();
+  phase = 'anchoring';
+  lastTapVid = null;
+  lastPulseBeat = null;
+  const marker = root.querySelector('#tbMarker');
+  if (marker) marker.classList.add('hidden');
+  blipFeedback('&nbsp;', '');
+  setStatus(`Re-locking — tap ${settings().anchorTapCount} steady beats`);
 }
 
 function togglePause() {
@@ -357,6 +381,9 @@ function renderResults(stats, blindStats, reason) {
             </div>`
           : ''
       }
+      <div class="chart-title">Accuracy over the song</div>
+      <canvas class="chart" id="accChart"></canvas>
+      <div class="chart-title">Tap timing spread</div>
       <canvas class="chart" id="histChart"></canvas>
       <div class="results-actions">
         <button class="btn primary" id="againBtn">Play again</button>
@@ -364,6 +391,7 @@ function renderResults(stats, blindStats, reason) {
       </div>
     </div>
   `;
+  drawAccuracyTimeline(root.querySelector('#accChart'), stats.timeline);
   drawHistogram(root.querySelector('#histChart'), stats.histogram);
   root.querySelector('#againBtn').addEventListener('click', () => renderStartPanel());
 }
@@ -380,7 +408,7 @@ function normalizeStamp(e) {
 function onKey(e) {
   const t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-  if (e.code === 'Space') {
+  if (e.code === 'Space' || e.code === 'KeyF' || e.code === 'KeyJ') {
     e.preventDefault();
     if (e.repeat) return;
     doTap(normalizeStamp(e));
@@ -388,13 +416,15 @@ function onKey(e) {
     debugOverlayOn = !debugOverlayOn;
     const o = root.querySelector('#debugOverlay');
     if (o) o.classList.toggle('hidden', !debugOverlayOn);
-  } else if (e.key === 'a' || e.key === 'A') {
+  } else if (e.key === 'A' && e.shiftKey) {
+    // Shift+A so a stray pinky near F can't toggle it mid-run.
     autotap = autotap ? null : { nextPerf: performance.now() + 500 };
   }
 }
 
 function doTap(perfT) {
   if (phase !== 'anchoring' && phase !== 'tracking') return;
+  flashTapPad();
   if (!clock || !clock.isMappingReady()) {
     setStatus('Hold on — syncing to the video…');
     return;
@@ -414,7 +444,7 @@ function doTap(perfT) {
       break;
     case 'locked':
       phase = 'tracking';
-      setStatus(blind.mode === 'off' ? 'LOCKED IN — keep tapping!' : 'LOCKED IN — blind windows incoming…');
+      setStatus(`LOCKED IN at ${res.gridBpm} BPM — ${blind.mode === 'off' ? 'keep tapping!' : 'blind windows incoming…'}`);
       break;
     case 'tap':
       lastCombo = res.combo;
@@ -451,8 +481,10 @@ function tick() {
     }
   }
 
-  if (!clock.isMappingReady() || !engine || engine.state !== 'tracking') return;
+  if (!clock.isMappingReady() || !engine) return;
   const vid = clock.videoTimeAt(performance.now());
+  runAutotap(vid);
+  if (engine.state !== 'tracking') return;
   const beatFloat = (vid - engine.phase) / engine.period;
 
   // Beat pulse (hidden while blind).
@@ -469,7 +501,6 @@ function tick() {
   }
 
   runBlindScheduler(beatFloat, vid);
-  runAutotap(vid);
 }
 
 function runBlindScheduler(beatFloat, vid) {
@@ -600,6 +631,14 @@ function showTapFeedback(res) {
     marker.style.left = `${50 + (clamped / 135) * 50}%`;
     marker.className = `tb-marker c-${res.rating}-bg`;
   }
+}
+
+function flashTapPad() {
+  const pad = root.querySelector('#tapPad');
+  if (!pad) return;
+  pad.classList.remove('flash');
+  void pad.offsetWidth; // restart the CSS animation
+  pad.classList.add('flash');
 }
 
 function neutralBlip() {

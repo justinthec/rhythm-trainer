@@ -9,7 +9,7 @@ export function render(el) {
 
   el.innerHTML = `
     <h1>Pick a song</h1>
-    <p class="hint">Tap along on the beat — Spacebar or click/tap anywhere on the video.</p>
+    <p class="hint">Tap along on the beat — Space, F/J keys, or the tap pad under the video.</p>
     <div class="song-grid" id="songGrid"></div>
     <details class="add-song">
       <summary>+ Add custom song</summary>

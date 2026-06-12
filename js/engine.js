@@ -13,6 +13,13 @@ export const HISTOGRAM_RANGE = 135;
 const DRIFT_ALPHA = 0.05; // slow phase correction per scored tap
 const ANCHOR_MIN_RESULTANT = 0.85; // circular-mean concentration required to lock
 
+// The player may tap any clean subdivision or multiple of the listed tempo
+// (half notes, quarters, 8ths, triplets, 16ths, 32nds). The grid locks to
+// whichever ratio of the base period matches their anchor-tap intervals.
+const GRID_RATIOS = [4, 3, 2, 1, 1 / 2, 1 / 3, 1 / 4, 1 / 8];
+const GRID_RATIO_TOLERANCE = 0.12; // relative error allowed vs the median interval
+const MIN_GRID_PERIOD = 90; // ms; subdivisions faster than this are untappable
+
 export function timingWindows(bpm) {
   const T = 60000 / bpm;
   // Cap windows well below T/2 so a tap can never be ambiguous between
@@ -94,9 +101,13 @@ export function trendVerdict(slope, r, tapCount) {
 }
 
 export function createEngine({ bpm, anchorTapCount = 8 }) {
-  const T = 60000 / bpm;
-  const windows = timingWindows(bpm);
-  const refractory = Math.max(120, T / 4);
+  const baseT = 60000 / bpm;
+  let T = baseT; // effective grid period; set to the tapped subdivision at lock
+  let windows = timingWindows(bpm);
+  // Debounce only while anchoring — the tapped subdivision isn't known yet,
+  // so T/4 of the base period could swallow legitimate fast subdivisions
+  // (two-handed 32nds arrive ~100ms apart).
+  let refractory = 60;
 
   let state = 'anchoring'; // 'anchoring' | 'tracking'
   let anchorTaps = [];
@@ -127,17 +138,52 @@ export function createEngine({ bpm, anchorTapCount = 8 }) {
   }
 
   function lockOn() {
-    const { phase, R } = circularMeanPhase(anchorTaps, T);
+    // Pick the grid period: the GRID_RATIO of the base period closest to the
+    // median inter-tap interval (median shrugs off a skipped beat or two).
+    const diffs = [];
+    for (let i = 1; i < anchorTaps.length; i++) diffs.push(anchorTaps[i] - anchorTaps[i - 1]);
+    diffs.sort((a, b) => a - b);
+    const med = diffs[Math.floor(diffs.length / 2)];
+    let best = null;
+    for (const r of GRID_RATIOS) {
+      const cand = baseT * r;
+      if (cand < MIN_GRID_PERIOD) continue;
+      const err = Math.abs(med - cand) / cand;
+      if (err <= GRID_RATIO_TOLERANCE && (!best || err < best.err)) best = { T: cand, err };
+    }
+    if (!best) {
+      anchorTaps = [];
+      return { type: 'anchor-failed', resultant: 0 };
+    }
+
+    const { phase, R } = circularMeanPhase(anchorTaps, best.T);
     if (R < ANCHOR_MIN_RESULTANT) {
       anchorTaps = [];
       return { type: 'anchor-failed', resultant: R };
     }
+    T = best.T;
+    windows = timingWindows(60000 / T);
+    refractory = Math.max(60, Math.min(200, T / 4));
     // Express the phase near the first anchor tap so beat indices stay small.
     const first = anchorTaps[0];
     phi = phase + Math.round((first - phase) / T) * T;
     phi0 = phi;
     state = 'tracking';
-    return { type: 'locked', phase: phi, resultant: R };
+    return { type: 'locked', phase: phi, resultant: R, gridBpm: Math.round(60000 / T) };
+  }
+
+  // Throw away the grid (phase, subdivision) but keep score/stats, so a
+  // sloppy lock-in can be redone mid-song without losing progress.
+  function reAnchor() {
+    state = 'anchoring';
+    anchorTaps = [];
+    phi = null;
+    phi0 = null;
+    T = baseT;
+    windows = timingWindows(bpm);
+    refractory = 120;
+    lastTapAt = null;
+    scoredBeats.clear(); // beat indices are meaningless under the new grid
   }
 
   function addTap(t, { blind = false } = {}) {
@@ -236,6 +282,7 @@ export function createEngine({ bpm, anchorTapCount = 8 }) {
       bestCombo,
       counts: { ...counts },
       histogram: histogram.slice(),
+      timeline: taps.map((x) => ({ t: x.t, delta: x.delta, rating: x.rating, blind: x.blind })),
       blind,
     };
   }
@@ -263,6 +310,7 @@ export function createEngine({ bpm, anchorTapCount = 8 }) {
     beatTime(k) {
       return phi + k * T;
     },
+    reAnchor,
     addTap,
     getStats,
   };
