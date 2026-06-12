@@ -26,9 +26,13 @@ export function render(el) {
       </label>
     </div>
     <div class="calib-box">
-      <p>Not sure of your offset? Run the calibration: tap <strong>Spacebar</strong> along with 24 metronome clicks and we'll measure your average lag (hardware + reflex).</p>
+      <p>Not sure of your offset? Run the calibration: tap along with 24 metronome clicks — <strong>Spacebar, F/J, or click the pad below</strong> — and we'll measure your average lag (hardware + reflex).</p>
       ${s.lastCalibration ? `<p class="hint">Last calibration: ${s.lastCalibration.offset}ms ± ${s.lastCalibration.stdDev}ms on ${new Date(s.lastCalibration.date).toLocaleDateString()}</p>` : ''}
       <button id="calibBtn" class="btn primary">🎯 Start calibration</button>
+      <div id="calibTapPad" class="tap-pad calib-tap-pad hidden">
+        <span class="tap-pad-label">TAP</span>
+        <span class="tap-pad-sub">click here · Space · or F / J</span>
+      </div>
       <div id="calibStatus" class="hint"></div>
       <div id="calibResult"></div>
     </div>
@@ -135,8 +139,19 @@ function startCalibration(el) {
   if (calib) calib.cancel();
   const statusEl = el.querySelector('#calibStatus');
   const resultEl = el.querySelector('#calibResult');
+  const padEl = el.querySelector('#calibTapPad');
   resultEl.innerHTML = '';
-  statusEl.textContent = 'Listen for the clicks and tap Spacebar with each one…';
+  statusEl.textContent = 'Listen for the clicks and tap along…';
+  padEl.classList.remove('hidden');
+
+  function doCalibTap(ts) {
+    if (!calib) return;
+    const t = !ts || ts > 1e12 ? performance.now() : ts;
+    calib.tap(t);
+    padEl.classList.remove('flash');
+    void padEl.offsetWidth;
+    padEl.classList.add('flash');
+  }
 
   calib = createCalibration({
     onProgress: ({ click, total }) => {
@@ -146,6 +161,7 @@ function startCalibration(el) {
       calib = null;
       window.removeEventListener('keydown', calibKeyHandler);
       calibKeyHandler = null;
+      padEl.classList.add('hidden');
       if (!res.ok) {
         statusEl.textContent = `Not enough clean taps (${res.validTaps}/${res.needed}). Try again and tap with every click.`;
         return;
@@ -166,13 +182,18 @@ function startCalibration(el) {
   });
 
   calibKeyHandler = (e) => {
-    if (e.code === 'Space' && !e.repeat) {
+    if ((e.code === 'Space' || e.code === 'KeyF' || e.code === 'KeyJ') && !e.repeat) {
       e.preventDefault();
-      const ts = !e.timeStamp || e.timeStamp > 1e12 ? performance.now() : e.timeStamp;
-      if (calib) calib.tap(ts);
+      doCalibTap(e.timeStamp);
     }
   };
   window.addEventListener('keydown', calibKeyHandler);
+
+  padEl.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    doCalibTap(e.timeStamp);
+  });
+
   calib.start();
 }
 

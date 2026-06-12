@@ -105,6 +105,7 @@ input:focus { outline: none; border-color: var(--accent); }
   cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: manipulation;
 }
 .tap-pad:active { transform: scale(0.985); }
+.calib-tap-pad { margin: 0.8rem 0 0.2rem; }
 .tap-pad-label { font-weight: 800; font-size: 1.3rem; letter-spacing: 0.25em; }
 .tap-pad-sub { font-size: 0.8rem; color: var(--muted); }
 .tap-pad.flash { animation: pad-flash 0.18s ease-out; }

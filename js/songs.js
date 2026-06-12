@@ -10,7 +10,7 @@ export const SEED_SONGS = [
   { id: 'seed:lose-yourself', title: 'Lose Yourself', artist: 'Eminem', bpm: 86, videoId: '_Yhyp-_hX2s', tag: 'Hip-hop' },
   { id: 'seed:dynamite', title: 'Dynamite', artist: 'BTS', bpm: 114, videoId: 'gdZLi9oWNZg', tag: 'K-pop' },
   { id: 'seed:kill-this-love', title: 'Kill This Love', artist: 'BLACKPINK', bpm: 132, videoId: '2S24-y0Ij3Y', tag: 'K-pop' },
-  { id: 'seed:ditto', title: 'Ditto', artist: 'NewJeans', bpm: 107, videoId: 'V37TaRdVUQY', tag: 'K-pop' },
+  { id: 'seed:ditto', title: 'Ditto', artist: 'NewJeans', bpm: 134, videoId: 'V37TaRdVUQY', tag: 'K-pop' },
   { id: 'seed:blinding-lights', title: 'Blinding Lights', artist: 'The Weeknd', bpm: 171, videoId: '4NRXx6U8ABQ', tag: 'Pop' },
   { id: 'seed:levitating', title: 'Levitating', artist: 'Dua Lipa', bpm: 103, videoId: 'TUVcZfQe-Kw', tag: 'Pop' },
   { id: 'seed:espresso', title: 'Espresso', artist: 'Sabrina Carpenter', bpm: 104, videoId: 'eVli-tstM5E', tag: 'Pop' },

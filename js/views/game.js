@@ -381,7 +381,7 @@ function renderResults(stats, blindStats, reason) {
             </div>`
           : ''
       }
-      <div class="chart-title">Accuracy over the song</div>
+      <div class="chart-title">Accuracy over the song — shaded by rush (early) vs drag (late)</div>
       <canvas class="chart" id="accChart"></canvas>
       <div class="chart-title">Tap timing spread</div>
       <canvas class="chart" id="histChart"></canvas>
