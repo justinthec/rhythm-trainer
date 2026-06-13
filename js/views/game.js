@@ -131,6 +131,9 @@ function renderPlayPanel() {
         <div class="blind-count" id="blindCount"></div>
         <div class="blind-blip" id="blindBlip"></div>
       </div>
+      <div class="play-gate" id="playGate">
+        <button class="play-btn" id="playBtn" disabled>Loading video…</button>
+      </div>
       <div class="debug-overlay hidden" id="debugOverlay"></div>
     </div>
     <div class="tap-pad" id="tapPad">
@@ -159,6 +162,12 @@ function renderPlayPanel() {
   root.querySelector('#tapPad').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     doTap(normalizeStamp(e));
+  });
+  root.querySelector('#playBtn').addEventListener('click', () => {
+    // Must start playback synchronously inside this user gesture — mobile
+    // browsers reject playVideo() that fires later (e.g. from a resolved
+    // promise), which is why we never autoplay.
+    if (clock) clock.play();
   });
   root.querySelector('#reAnchorBtn').addEventListener('click', reAnchorNow);
   root.querySelector('#pauseBtn').addEventListener('click', togglePause);
@@ -223,12 +232,20 @@ function startGame(blindMode) {
     videoId: effectiveVideoId(),
     onStateChange: (s) => {
       if (s === PlayerState.ENDED) finishSession('video ended');
+      if (s === PlayerState.PLAYING) {
+        const gate = root.querySelector('#playGate');
+        if (gate) gate.classList.add('hidden');
+      }
       if (s === PlayerState.PLAYING && phase === 'loading') {
         phase = 'anchoring';
         setStatus(`TAP ALONG TO LOCK IN — 0/${settings().anchorTapCount}`);
       }
       if (s === PlayerState.PAUSED && (phase === 'anchoring' || phase === 'tracking')) {
-        setStatus('Paused — press ⏸ to resume');
+        const gate = root.querySelector('#playGate');
+        const btn = root.querySelector('#playBtn');
+        if (btn) btn.textContent = '▶ Resume';
+        if (gate) gate.classList.remove('hidden');
+        setStatus('Paused — tap ▶ Resume');
       }
     },
     onError: (code) => {
@@ -249,7 +266,13 @@ function startGame(blindMode) {
       if (phase === 'tracking') setStatus(blind.mode === 'off' ? 'Locked in — keep tapping' : 'Locked in — blind windows incoming…');
     },
   });
-  clock.ready.then(() => clock.play());
+  clock.ready.then(() => {
+    const btn = root.querySelector('#playBtn');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '▶ Play';
+    }
+  });
 
   focusWatchdog = setInterval(() => {
     const a = document.activeElement;

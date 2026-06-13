@@ -131,6 +131,18 @@ input:focus { outline: none; border-color: var(--accent); }
 .blind-blip.blip { animation: blip 0.3s ease-out; }
 @keyframes blip { 0% { background: var(--text); transform: scale(1.6); } 100% { background: var(--border); transform: scale(1); } }
 
+.play-gate {
+  position: absolute; inset: 0; z-index: 6; background: rgba(8, 10, 16, 0.82);
+  display: flex; align-items: center; justify-content: center;
+}
+.play-btn {
+  font-size: 1.3rem; font-weight: 800; letter-spacing: 0.04em; color: #06121d;
+  background: var(--perfect); border: none; border-radius: 999px;
+  padding: 0.7rem 2.2rem; cursor: pointer; box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+}
+.play-btn:disabled { background: var(--border); color: var(--muted); cursor: default; box-shadow: none; }
+.play-btn:not(:disabled):active { transform: scale(0.96); }
+
 .debug-overlay {
   position: absolute; left: 6px; bottom: 6px; z-index: 5; font: 11px/1.4 ui-monospace, monospace;
   background: rgba(0,0,0,0.7); color: #9f9; padding: 3px 6px; border-radius: 4px; pointer-events: none;
