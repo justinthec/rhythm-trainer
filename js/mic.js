@@ -46,10 +46,16 @@ export function createClapDetector({ onOnset, onLevel, onError, sensitivity = 0.
     baseline = baseline * BASELINE_DECAY + flux * (1 - BASELINE_DECAY);
     const now = performance.now();
 
-    // sensitivity 0..1 → rise factor 3.0 (strict) .. 1.4 (loose), and a lower
-    // absolute floor so quiet rooms still trigger at high sensitivity.
-    const rise = 3.0 - 1.6 * sens;
-    const floor = (1 - sens) * 800 + 120;
+    // sensitivity 0..1 maps to detection strictness. The low end is VERY strict
+    // so only loud, deliberate claps register (useful when the music bleeds in);
+    // the high end stays loose. A squared curve concentrates the tuning range in
+    // the lower half, so dragging the slider left ramps strictness up hard:
+    //   sens 1.0 → rise 1.4×, floor 100   (loose — quiet claps register)
+    //   sens 0.5 → rise 3.9×, floor 3100  (moderate)
+    //   sens 0.0 → rise 11.4×, floor 12100 (only loud, sharp claps register)
+    const strict = (1 - sens) ** 2;
+    const rise = 1.4 + strict * 10;
+    const floor = 100 + strict * 12000;
     const threshold = Math.max(baseline * rise, floor);
 
     if (flux > threshold && level > MIN_LEVEL && now - lastOnset > REFRACTORY_MS) {
