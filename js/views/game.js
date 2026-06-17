@@ -788,7 +788,7 @@ function showTapFeedback(res) {
   }
 }
 
-const MAX_HITS = 32; // recent taps kept on the history strip
+const MAX_HITS = 64; // recent taps kept on the history strip
 const HIT_RANGE_MS = 120; // |delta| mapped to full vertical deflection
 
 // Append the latest tap to the on-screen history strip: horizontal = time
