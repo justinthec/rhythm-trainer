@@ -475,18 +475,21 @@ function doTap(perfT) {
       lastCombo = res.combo;
       if (isBlind) {
         blind.windowTaps.push(res);
-        if (blind.mode === 'survival') {
-          if (res.rating === 'miss') {
+        if (res.rating === 'miss') {
+          // Show direction only — no ms offset so the challenge stays blind.
+          const dir = res.delta < 0 ? 'EARLY' : 'LATE';
+          blipFeedback(`<span class="c-miss">MISS — ${dir}</span>`, '');
+          if (blind.mode === 'survival') {
             blind.consecutiveMisses++;
             updateSurvivalStrikes();
             if (blind.consecutiveMisses >= 3) endSurvival('miss');
-          } else {
-            blind.consecutiveMisses = 0;
-            updateSurvivalStrikes();
-            neutralBlip();
           }
         } else {
           neutralBlip();
+          if (blind.mode === 'survival') {
+            blind.consecutiveMisses = 0;
+            updateSurvivalStrikes();
+          }
         }
       } else {
         showTapFeedback(res);
