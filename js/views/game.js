@@ -159,6 +159,12 @@ function renderPlayPanel() {
         <div class="tb-center"></div>
         <div class="tb-marker hidden" id="tbMarker"></div>
       </div>
+      <div class="hit-history" id="hitHistory" aria-hidden="true">
+        <span class="hit-edge hit-edge-top">early</span>
+        <span class="hit-edge hit-edge-bot">late</span>
+        <div class="hit-center"></div>
+        <div class="hit-dots" id="hitDots"></div>
+      </div>
       <div class="scoreboard">
         <div><span class="sb-label">Score</span><span id="sbScore">0</span></div>
         <div><span class="sb-label">Combo</span><span id="sbCombo">0</span></div>
@@ -329,6 +335,7 @@ function reAnchorNow() {
   lastPulseBeat = null;
   const marker = root.querySelector('#tbMarker');
   if (marker) marker.classList.add('hidden');
+  clearHits();
   blipFeedback('&nbsp;', '');
   setStatus(`Re-locking — tap ${settings().anchorTapCount} steady beats`);
 }
@@ -576,6 +583,7 @@ function doTap(perfT) {
         const cfg = BLIND_MODES[blind.mode];
         if (cfg.showBlindFeedback) {
           showTapFeedback(res);
+          pushHit(res);
         } else if (res.rating === 'miss') {
           const dir = res.delta < 0 ? 'EARLY' : 'LATE';
           blipFeedback(`<span class="c-miss">MISS — ${dir}</span>`, '');
@@ -594,6 +602,7 @@ function doTap(perfT) {
         }
       } else {
         showTapFeedback(res);
+        pushHit(res);
       }
       updateScoreboard();
       break;
@@ -777,6 +786,29 @@ function showTapFeedback(res) {
     marker.style.left = `${50 + (clamped / 135) * 50}%`;
     marker.className = `tb-marker c-${res.rating}-bg`;
   }
+}
+
+const MAX_HITS = 32; // recent taps kept on the history strip
+const HIT_RANGE_MS = 120; // |delta| mapped to full vertical deflection
+
+// Append the latest tap to the on-screen history strip: horizontal = time
+// (newest on the right), vertical = early (up) / late (down), color = rating.
+function pushHit(res) {
+  const dots = root.querySelector('#hitDots');
+  if (!dots) return;
+  const dot = document.createElement('div');
+  dot.className = `hit-dot c-${res.rating}-bg`;
+  const clamped = Math.max(-HIT_RANGE_MS, Math.min(HIT_RANGE_MS, res.delta));
+  const offset = (clamped / HIT_RANGE_MS) * 20; // px; early(−)=up, late(+)=down
+  dot.style.transform = `translateY(${offset.toFixed(1)}px)`;
+  dot.title = `${RATING_LABEL[res.rating]} ${fmtMs(res.delta)}`;
+  dots.appendChild(dot);
+  while (dots.childElementCount > MAX_HITS) dots.removeChild(dots.firstChild);
+}
+
+function clearHits() {
+  const dots = root.querySelector('#hitDots');
+  if (dots) dots.innerHTML = '';
 }
 
 function flashTapPad() {
