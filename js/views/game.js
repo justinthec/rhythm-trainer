@@ -7,10 +7,13 @@ import { createVideoClock, PlayerState } from '../youtube.js';
 import { drawHistogram, drawAccuracyTimeline } from '../charts.js';
 
 const BLIND_MODES = {
-  off: { label: 'Off', desc: 'Full audio the whole song.' },
-  intervals: { label: 'Intervals', audible: 16, blind: [8], desc: '4 bars of music, then 2 bars muted. Repeat.' },
-  hard: { label: 'Hard', audible: 16, blind: [16], desc: '4 bars of music, then 4 bars muted. Repeat.' },
-  survival: { label: 'Survival', audible: 16, blind: [8, 16, 32, 64], desc: 'Muted windows keep growing — 3 misses in a row while blind ends the run.' },
+  off:      { label: 'Off',      desc: 'Full audio the whole song.' },
+  intervals:{ label: 'Intervals', audible: 16, blind: [8],           desc: '4 bars of music, then 2 bars muted. Repeat.' },
+  hard:     { label: 'Hard',     audible: 16, blind: [16],           desc: '4 bars of music, then 4 bars muted. Repeat.' },
+  survival: { label: 'Survival', audible: 16, blind: [8, 16, 32, 64], survivable: true, showBlindFeedback: true,
+              desc: 'Growing blind windows — timing feedback visible, 3 misses in a row ends the run.' },
+  extreme:  { label: 'Extreme',  audible: 16, blind: [8, 16, 32, 64], survivable: true, showBlindFeedback: false,
+              desc: 'Same as Survival but zero feedback while blind — truly flying blind.' },
 };
 const BAR = 4; // beats per bar (grid bars, not necessarily musical downbeats)
 const BLIND_GRACE_TAPS = 8; // scored taps before the first blind window
@@ -144,18 +147,18 @@ function renderPlayPanel() {
     <div class="hud">
       <div class="status-line" id="statusLine">Loading video…</div>
       <div class="feedback" id="feedback">&nbsp;</div>
+      <div class="scoreboard">
+        <div><span class="sb-label">Score</span><span id="sbScore">0</span></div>
+        <div><span class="sb-label">Combo</span><span id="sbCombo">0</span></div>
+        <div><span class="sb-label">Accuracy</span><span id="sbAcc">—</span></div>
+        <div class="beat-pulse" id="beatPulse"></div>
+      </div>
       <div class="timing-bar" id="timingBar">
         <div class="tb-zone tb-okay"></div>
         <div class="tb-zone tb-good"></div>
         <div class="tb-zone tb-perfect"></div>
         <div class="tb-center"></div>
         <div class="tb-marker hidden" id="tbMarker"></div>
-      </div>
-      <div class="scoreboard">
-        <div><span class="sb-label">Score</span><span id="sbScore">0</span></div>
-        <div><span class="sb-label">Combo</span><span id="sbCombo">0</span></div>
-        <div><span class="sb-label">Accuracy</span><span id="sbAcc">—</span></div>
-        <div class="beat-pulse" id="beatPulse"></div>
       </div>
       <div class="toast hidden" id="toast"></div>
     </div>
@@ -333,7 +336,7 @@ function finishSession(reason) {
         avgEndDrift: blindWindowEndDeltas.length
           ? blindWindowEndDeltas.reduce((a, b) => a + b, 0) / blindWindowEndDeltas.length
           : 0,
-        beatsSurvived: blind.mode === 'survival' ? Math.round(totalBlindBeatsDone) : null,
+        beatsSurvived: BLIND_MODES[blind.mode]?.survivable ? Math.round(totalBlindBeatsDone) : null,
       }
     : null;
 
@@ -475,18 +478,21 @@ function doTap(perfT) {
       lastCombo = res.combo;
       if (isBlind) {
         blind.windowTaps.push(res);
-        if (res.rating === 'miss') {
-          // Show direction only — no ms offset so the challenge stays blind.
+        const cfg = BLIND_MODES[blind.mode];
+        if (cfg.showBlindFeedback) {
+          showTapFeedback(res);
+        } else if (res.rating === 'miss') {
           const dir = res.delta < 0 ? 'EARLY' : 'LATE';
           blipFeedback(`<span class="c-miss">MISS — ${dir}</span>`, '');
-          if (blind.mode === 'survival') {
+        } else {
+          neutralBlip();
+        }
+        if (cfg.survivable) {
+          if (res.rating === 'miss') {
             blind.consecutiveMisses++;
             updateSurvivalStrikes();
             if (blind.consecutiveMisses >= 3) endSurvival('miss');
-          }
-        } else {
-          neutralBlip();
-          if (blind.mode === 'survival') {
+          } else {
             blind.consecutiveMisses = 0;
             updateSurvivalStrikes();
           }
@@ -565,7 +571,7 @@ function runBlindScheduler(beatFloat, vid) {
     if (count) count.textContent = `${Math.ceil(remaining)} beats`;
 
     // Survival dropout: stopped tapping mid-window.
-    if (blind.mode === 'survival' && lastTapVid !== null && vid - lastTapVid > 2.5 * engine.period) {
+    if (BLIND_MODES[blind.mode]?.survivable && lastTapVid !== null && vid - lastTapVid > 2.5 * engine.period) {
       endSurvival('dropout');
       return;
     }
@@ -589,7 +595,7 @@ function enterBlind() {
   root.querySelector('#feedback').innerHTML = '&nbsp;';
   const strikesEl = root.querySelector('#blindStrikes');
   if (strikesEl) {
-    strikesEl.classList.toggle('hidden', blind.mode !== 'survival');
+    strikesEl.classList.toggle('hidden', !BLIND_MODES[blind.mode]?.survivable);
     strikesEl.textContent = '○ ○ ○';
   }
   setStatus('Keep the tempo going — no sound, no feedback');
