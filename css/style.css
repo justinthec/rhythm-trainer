@@ -190,6 +190,9 @@ input:focus { outline: none; border-color: var(--accent); }
 .c-okay { color: var(--okay); }
 .c-miss { color: var(--miss); }
 .c-extra { color: var(--muted); }
+.c-early { color: var(--early); }
+.c-late { color: var(--okay); }
+.res-detail { color: var(--muted); font-size: 0.85em; }
 .c-perfect-bg { background: var(--perfect); }
 .c-good-bg { background: var(--good); }
 .c-okay-bg { background: var(--okay); }

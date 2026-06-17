@@ -361,6 +361,23 @@ function finishSession(reason) {
   renderResults(stats, blindStats, reason);
 }
 
+function tendencyLabel(ms) {
+  const abs = Math.abs(ms);
+  if (abs < 10) return { text: 'Centered', cls: 'c-perfect' };
+  const dir = ms < 0 ? 'early' : 'late';
+  const dirCls = ms < 0 ? 'c-early' : 'c-late';
+  if (abs < 25) return { text: `Slightly ${dir}`, cls: 'c-good' };
+  if (abs < 50) return { text: dir.charAt(0).toUpperCase() + dir.slice(1), cls: dirCls };
+  return { text: `Strongly ${dir}`, cls: 'c-miss' };
+}
+
+function consistencyLabel(sd) {
+  if (sd < 20) return { text: 'Tight', cls: 'c-perfect' };
+  if (sd < 35) return { text: 'Solid', cls: 'c-good' };
+  if (sd < 55) return { text: 'Variable', cls: 'c-okay' };
+  return { text: 'Loose', cls: 'c-miss' };
+}
+
 function renderResults(stats, blindStats, reason) {
   const verdictText = {
     steady: 'Steady tempo — nice.',
@@ -371,6 +388,8 @@ function renderResults(stats, blindStats, reason) {
     Math.abs(stats.meanDelta) > 25
       ? `Average tap is ${Math.abs(stats.meanDelta).toFixed(0)}ms ${stats.meanDelta > 0 ? 'late' : 'early'} — consider recalibrating your input offset in Settings.`
       : '';
+  const tendency = tendencyLabel(stats.meanDelta);
+  const consistency = consistencyLabel(stats.stdDev);
 
   root.innerHTML = `
     <a class="back" href="#/select">← Songs</a>
@@ -383,8 +402,8 @@ function renderResults(stats, blindStats, reason) {
         <div><span class="sb-label">Accuracy</span><span>${stats.accuracy.toFixed(1)}%</span></div>
         <div><span class="sb-label">Taps</span><span>${stats.tapCount}</span></div>
         <div><span class="sb-label">Best combo</span><span>${stats.bestCombo}</span></div>
-        <div><span class="sb-label">Mean</span><span>${fmtMs(stats.meanDelta)}</span></div>
-        <div><span class="sb-label">Consistency (σ)</span><span>±${stats.stdDev.toFixed(0)}ms</span></div>
+        <div><span class="sb-label">Tendency</span><span><span class="${tendency.cls}">${tendency.text}</span> <span class="res-detail">${fmtMs(stats.meanDelta)}</span></span></div>
+        <div><span class="sb-label">Consistency</span><span><span class="${consistency.cls}">${consistency.text}</span> <span class="res-detail">±${stats.stdDev.toFixed(0)}ms</span></span></div>
       </div>
       <p class="verdict">${verdictText}</p>
       ${meanHint ? `<p class="hint">${meanHint}</p>` : ''}
