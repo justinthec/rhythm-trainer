@@ -13,7 +13,6 @@
 const FFT = 1024;
 const REFRACTORY_MS = 110; // shortest gap between two accepted claps
 const BASELINE_DECAY = 0.92; // how fast the ambient-flux estimate adapts
-const MIN_LEVEL = 0.04; // ignore near-silent frames (0..1)
 
 export function createClapDetector({ onOnset, onLevel, onError, sensitivity = 0.5 } = {}) {
   let stream = null;
@@ -48,17 +47,18 @@ export function createClapDetector({ onOnset, onLevel, onError, sensitivity = 0.
 
     // sensitivity 0..1 maps to detection strictness. The low end is VERY strict
     // so only loud, deliberate claps register (useful when the music bleeds in);
-    // the high end stays loose. A squared curve concentrates the tuning range in
-    // the lower half, so dragging the slider left ramps strictness up hard:
-    //   sens 1.0 → rise 1.4×, floor 100   (loose — quiet claps register)
-    //   sens 0.5 → rise 3.9×, floor 3100  (moderate)
-    //   sens 0.0 → rise 11.4×, floor 12100 (only loud, sharp claps register)
+    // the high end is VERY loose so even soft finger taps register. A squared
+    // curve concentrates the tuning range in the lower half:
+    //   sens 1.0 → rise 1.1×, floor 12,  minLevel 0.004 (catches quiet taps)
+    //   sens 0.5 → rise 3.6×, floor 3012, minLevel 0.027 (moderate)
+    //   sens 0.0 → rise 11.1×, floor 12012, minLevel 0.05 (loud claps only)
     const strict = (1 - sens) ** 2;
-    const rise = 1.4 + strict * 10;
-    const floor = 100 + strict * 12000;
+    const rise = 1.1 + strict * 10;
+    const floor = 12 + strict * 12000;
+    const minLevel = 0.004 + (1 - sens) * 0.046;
     const threshold = Math.max(baseline * rise, floor);
 
-    if (flux > threshold && level > MIN_LEVEL && now - lastOnset > REFRACTORY_MS) {
+    if (flux > threshold && level > minLevel && now - lastOnset > REFRACTORY_MS) {
       lastOnset = now;
       if (onOnset) onOnset(now, flux);
     }
