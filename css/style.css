@@ -119,6 +119,14 @@ input:focus { outline: none; border-color: var(--accent); }
   0% { background: rgba(61, 220, 132, 0.22); border-color: var(--accent); }
   100% { background: transparent; }
 }
+
+/* experimental clap (mic) input */
+.btn.active { background: var(--accent); border-color: var(--accent); color: #08130c; font-weight: 700; }
+.clap-row { display: flex; align-items: center; gap: 0.8rem; margin-top: 0.5rem; }
+.clap-meter { flex: 1; height: 8px; border-radius: 4px; background: var(--panel); overflow: hidden; }
+.clap-meter-bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.05s linear; }
+.clap-sens { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.clap-sens input { accent-color: var(--accent); }
 .game-top .back { margin: 0; }
 .game-song { color: var(--muted); font-size: 0.9rem; }
 .game-buttons { display: flex; gap: 0.4rem; }

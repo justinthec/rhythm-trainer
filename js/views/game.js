@@ -5,6 +5,7 @@ import { getData, update, addSession, newId } from '../storage.js';
 import { createEngine } from '../engine.js';
 import { createVideoClock, PlayerState } from '../youtube.js';
 import { drawHistogram, drawAccuracyTimeline } from '../charts.js';
+import { createClapDetector } from '../mic.js';
 
 const BLIND_MODES = {
   off:      { label: 'Off',      desc: 'Full audio the whole song.' },
@@ -35,6 +36,11 @@ let autotap = null; // { nextPerf } debug
 let debugOverlayOn = false;
 let toastTimer = null;
 let lastPulseBeat = null;
+let clap = null; // experimental clap detector (mic input)
+
+// Mic clap detection lags the real clap by the FFT window + frame latency;
+// shift detected onsets earlier to compensate. Fine-tune via input offset.
+const MIC_LATENCY_MS = 50;
 
 function settings() {
   return getData().settings;
@@ -68,6 +74,8 @@ export function leave() {
   keyHandler = null;
   if (clock) clock.destroy();
   clock = null;
+  if (clap) clap.stop();
+  clap = null;
   engine = null;
   blind = null;
   autotap = null;
@@ -121,6 +129,7 @@ function renderPlayPanel() {
       <a class="back" href="#/select">← Quit</a>
       <div class="game-song">${esc(song.title)} · ${song.bpm} BPM</div>
       <div class="game-buttons">
+        <button id="clapBtn" class="btn small" title="Experimental: clap into your mic instead of tapping">🎤 Clap</button>
         <button id="reAnchorBtn" class="btn small" title="Redo the lock-in taps — score is kept">↻ Re-lock</button>
         <button id="pauseBtn" class="btn small">⏸</button>
         <button id="finishBtn" class="btn small">Finish</button>
@@ -159,8 +168,14 @@ function renderPlayPanel() {
       <div class="toast hidden" id="toast"></div>
     </div>
     <div class="tap-pad" id="tapPad">
-      <span class="tap-pad-label">TAP</span>
-      <span class="tap-pad-sub">click here · Space · or F + J for fast subdivisions</span>
+      <span class="tap-pad-label" id="tapPadLabel">TAP</span>
+      <span class="tap-pad-sub" id="tapPadSub">click here · Space · or F + J for fast subdivisions</span>
+    </div>
+    <div class="clap-row hidden" id="clapRow">
+      <div class="clap-meter"><div class="clap-meter-bar" id="clapMeterBar"></div></div>
+      <label class="clap-sens">Sensitivity
+        <input type="range" id="clapSens" min="0" max="1" step="0.05">
+      </label>
     </div>
   `;
   root.querySelector('#tapPad').addEventListener('pointerdown', (e) => {
@@ -176,6 +191,16 @@ function renderPlayPanel() {
   root.querySelector('#reAnchorBtn').addEventListener('click', reAnchorNow);
   root.querySelector('#pauseBtn').addEventListener('click', togglePause);
   root.querySelector('#finishBtn').addEventListener('click', () => finishSession('finished'));
+  root.querySelector('#clapBtn').addEventListener('click', toggleClapMode);
+  const sens = root.querySelector('#clapSens');
+  sens.value = String(settings().clapSensitivity ?? 0.5);
+  sens.addEventListener('input', () => {
+    const v = parseFloat(sens.value);
+    if (clap) clap.setSensitivity(v);
+    update((d) => {
+      d.settings.clapSensitivity = v;
+    });
+  });
 }
 
 function renderErrorPanel(code) {
@@ -312,6 +337,57 @@ function togglePause() {
   if (!clock) return;
   if (clock.getPlayerState() === PlayerState.PLAYING) clock.pause();
   else clock.play();
+}
+
+// ---------- experimental: clap (mic) input ----------
+
+async function toggleClapMode() {
+  if (clap) {
+    clap.stop();
+    clap = null;
+    setClapUI(false);
+    return;
+  }
+  const btn = root.querySelector('#clapBtn');
+  btn.disabled = true;
+  setStatus('Requesting microphone…');
+  const detector = createClapDetector({
+    sensitivity: settings().clapSensitivity ?? 0.5,
+    onOnset: (now) => {
+      doTap(now - MIC_LATENCY_MS);
+    },
+    onLevel: (level) => {
+      const bar = root.querySelector('#clapMeterBar');
+      if (bar) bar.style.width = `${Math.min(100, level * 140).toFixed(0)}%`;
+    },
+    onError: (err) => {
+      clap = null;
+      setClapUI(false);
+      setStatus(`Mic unavailable (${err.name || 'error'}) — tapping still works.`);
+    },
+  });
+  const ok = await detector.start();
+  btn.disabled = false;
+  if (ok) {
+    clap = detector;
+    setClapUI(true);
+  }
+}
+
+function setClapUI(on) {
+  const btn = root.querySelector('#clapBtn');
+  const label = root.querySelector('#tapPadLabel');
+  const sub = root.querySelector('#tapPadSub');
+  const row = root.querySelector('#clapRow');
+  if (btn) btn.classList.toggle('active', on);
+  if (row) row.classList.toggle('hidden', !on);
+  if (label) label.textContent = on ? '🎤 CLAP' : 'TAP';
+  if (sub) {
+    sub.textContent = on
+      ? 'listening for claps · headphones recommended · click/Space still work'
+      : 'click here · Space · or F + J for fast subdivisions';
+  }
+  if (on) setStatus('Clap mode on — clap on the beat. Headphones help avoid the music triggering it.');
 }
 
 function finishSession(reason) {
