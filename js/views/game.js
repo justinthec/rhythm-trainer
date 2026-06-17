@@ -140,19 +140,9 @@ function renderPlayPanel() {
       </div>
       <div class="debug-overlay hidden" id="debugOverlay"></div>
     </div>
-    <div class="tap-pad" id="tapPad">
-      <span class="tap-pad-label">TAP</span>
-      <span class="tap-pad-sub">click here · Space · or F + J for fast subdivisions</span>
-    </div>
     <div class="hud">
       <div class="status-line" id="statusLine">Loading video…</div>
       <div class="feedback" id="feedback">&nbsp;</div>
-      <div class="scoreboard">
-        <div><span class="sb-label">Score</span><span id="sbScore">0</span></div>
-        <div><span class="sb-label">Combo</span><span id="sbCombo">0</span></div>
-        <div><span class="sb-label">Accuracy</span><span id="sbAcc">—</span></div>
-        <div class="beat-pulse" id="beatPulse"></div>
-      </div>
       <div class="timing-bar" id="timingBar">
         <div class="tb-zone tb-okay"></div>
         <div class="tb-zone tb-good"></div>
@@ -160,7 +150,17 @@ function renderPlayPanel() {
         <div class="tb-center"></div>
         <div class="tb-marker hidden" id="tbMarker"></div>
       </div>
+      <div class="scoreboard">
+        <div><span class="sb-label">Score</span><span id="sbScore">0</span></div>
+        <div><span class="sb-label">Combo</span><span id="sbCombo">0</span></div>
+        <div><span class="sb-label">Accuracy</span><span id="sbAcc">—</span></div>
+        <div class="beat-pulse" id="beatPulse"></div>
+      </div>
       <div class="toast hidden" id="toast"></div>
+    </div>
+    <div class="tap-pad" id="tapPad">
+      <span class="tap-pad-label">TAP</span>
+      <span class="tap-pad-sub">click here · Space · or F + J for fast subdivisions</span>
     </div>
   `;
   root.querySelector('#tapPad').addEventListener('pointerdown', (e) => {
