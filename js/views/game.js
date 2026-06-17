@@ -10,7 +10,7 @@ const BLIND_MODES = {
   off: { label: 'Off', desc: 'Full audio the whole song.' },
   intervals: { label: 'Intervals', audible: 16, blind: [8], desc: '4 bars of music, then 2 bars muted. Repeat.' },
   hard: { label: 'Hard', audible: 16, blind: [16], desc: '4 bars of music, then 4 bars muted. Repeat.' },
-  survival: { label: 'Survival', audible: 16, blind: [8, 16, 32, 64], desc: 'Muted windows keep growing — one Miss while blind ends the run.' },
+  survival: { label: 'Survival', audible: 16, blind: [8, 16, 32, 64], desc: 'Muted windows keep growing — 3 misses in a row while blind ends the run.' },
 };
 const BAR = 4; // beats per bar (grid bars, not necessarily musical downbeats)
 const BLIND_GRACE_TAPS = 8; // scored taps before the first blind window
@@ -129,6 +129,7 @@ function renderPlayPanel() {
       <div class="blind-overlay hidden" id="blindOverlay">
         <div class="blind-title">FLYING BLIND</div>
         <div class="blind-count" id="blindCount"></div>
+        <div class="blind-strikes hidden" id="blindStrikes"></div>
         <div class="blind-blip" id="blindBlip"></div>
       </div>
       <div class="play-gate" id="playGate">
@@ -219,6 +220,7 @@ function startGame(blindMode) {
     windowTaps: [],
     armed: false,
     survivalOver: false,
+    consecutiveMisses: 0,
   };
   blindWindowEndDeltas = [];
   totalBlindBeatsDone = 0;
@@ -473,8 +475,19 @@ function doTap(perfT) {
       lastCombo = res.combo;
       if (isBlind) {
         blind.windowTaps.push(res);
-        neutralBlip();
-        if (blind.mode === 'survival' && res.rating === 'miss') endSurvival('miss');
+        if (blind.mode === 'survival') {
+          if (res.rating === 'miss') {
+            blind.consecutiveMisses++;
+            updateSurvivalStrikes();
+            if (blind.consecutiveMisses >= 3) endSurvival('miss');
+          } else {
+            blind.consecutiveMisses = 0;
+            updateSurvivalStrikes();
+            neutralBlip();
+          }
+        } else {
+          neutralBlip();
+        }
       } else {
         showTapFeedback(res);
       }
@@ -565,11 +578,17 @@ function enterBlind() {
   blind.active = true;
   blind.windowTaps = [];
   blind.windowStartBeat = blind.nextStart;
+  blind.consecutiveMisses = 0;
   engine.setDriftFrozen(true);
   clock.mute();
   root.querySelector('#blindOverlay').classList.remove('hidden');
   root.querySelector('#tbMarker').classList.add('hidden');
   root.querySelector('#feedback').innerHTML = '&nbsp;';
+  const strikesEl = root.querySelector('#blindStrikes');
+  if (strikesEl) {
+    strikesEl.classList.toggle('hidden', blind.mode !== 'survival');
+    strikesEl.textContent = '○ ○ ○';
+  }
   setStatus('Keep the tempo going — no sound, no feedback');
 }
 
@@ -662,6 +681,14 @@ function flashTapPad() {
   pad.classList.remove('flash');
   void pad.offsetWidth; // restart the CSS animation
   pad.classList.add('flash');
+}
+
+function updateSurvivalStrikes() {
+  const el = root.querySelector('#blindStrikes');
+  if (!el) return;
+  const n = blind.consecutiveMisses;
+  el.textContent = ['○', '○', '○'].map((_, i) => i < n ? '●' : '○').join(' ');
+  el.classList.toggle('strike-warn', n > 0);
 }
 
 function neutralBlip() {

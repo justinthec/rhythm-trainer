@@ -133,6 +133,8 @@ input:focus { outline: none; border-color: var(--accent); }
 }
 .blind-title { font-size: 1.6rem; font-weight: 800; letter-spacing: 0.25em; color: var(--early); }
 .blind-count { font-size: 1.1rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.blind-strikes { font-size: 1.4rem; letter-spacing: 0.3em; color: var(--muted); transition: color 0.15s; }
+.blind-strikes.strike-warn { color: var(--miss); }
 .blind-blip { width: 18px; height: 18px; border-radius: 50%; background: var(--border); }
 .blind-blip.blip { animation: blip 0.3s ease-out; }
 @keyframes blip { 0% { background: var(--text); transform: scale(1.6); } 100% { background: var(--border); transform: scale(1); } }
