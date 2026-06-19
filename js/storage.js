@@ -14,6 +14,8 @@ const DEFAULT_STATE = {
     lastBlindMode: 'off',
     lastCalibration: null, // { offset, stdDev, date }
     videoOverrides: {}, // songId -> replacement videoId
+    getSongBpmKey: '', // getsongbpm.com API key (BPM lookup)
+    youtubeApiKey: '', // YouTube Data API v3 key (video search)
   },
   customSongs: [],
   sessions: [],

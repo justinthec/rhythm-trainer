@@ -37,6 +37,18 @@ export function render(el) {
       <div id="calibResult"></div>
     </div>
 
+    <h2>Song lookup (optional)</h2>
+    <p class="hint">Auto-fill BPM by song name (Freeplay &amp; custom songs), and find the YouTube video when adding a custom song. Both keys are free and stored only on this device.</p>
+    <div class="form-grid">
+      <label>GetSongBPM API key — for BPM lookup
+        <input id="getSongBpmKey" type="password" placeholder="get a free key at getsongbpm.com/api" value="${esc(s.getSongBpmKey || '')}">
+      </label>
+      <label>YouTube Data API key — for video search
+        <input id="youtubeApiKey" type="password" placeholder="Google Cloud → YouTube Data API v3" value="${esc(s.youtubeApiKey || '')}">
+      </label>
+      <p class="hint">Keys: <a href="https://getsongbpm.com/api" target="_blank" rel="noopener">GetSongBPM</a> (free, requires a link back to their site) · <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">YouTube Data API</a> (restrict it by HTTP referrer). BPM data from <a href="https://getsongbpm.com" target="_blank" rel="noopener">GetSongBPM</a>.</p>
+    </div>
+
     <h2>Cloud sync (Google Sheets)</h2>
     <p class="hint">Free, no account system: your data syncs to your own Google Sheet via Apps Script. <a href="docs/GAS-SETUP.md" target="_blank">Setup guide</a> (5 minutes, one time).</p>
     <div class="form-grid">
@@ -74,6 +86,10 @@ export function render(el) {
     e.target.value = v;
     update((d) => (d.settings.anchorTapCount = v));
   });
+
+  // Song-lookup API keys.
+  el.querySelector('#getSongBpmKey').addEventListener('change', (e) => update((d) => (d.settings.getSongBpmKey = e.target.value.trim())));
+  el.querySelector('#youtubeApiKey').addEventListener('change', (e) => update((d) => (d.settings.youtubeApiKey = e.target.value.trim())));
 
   // Sync fields.
   el.querySelector('#gasUrl').addEventListener('change', (e) => update((d) => (d.settings.gasUrl = e.target.value.trim())));

@@ -6,6 +6,7 @@ import { createEngine } from '../engine.js';
 import { createVideoClock, createInternalClock, PlayerState } from '../youtube.js';
 import { drawHistogram, drawAccuracyTimeline } from '../charts.js';
 import { createClapDetector } from '../mic.js';
+import { searchSongBpm, fetchTempo, hasBpmKey, GETSONGBPM_CREDIT } from '../lookup.js';
 
 const BLIND_MODES = {
   off:      { label: 'Off',      desc: 'Full audio the whole song.' },
@@ -144,6 +145,11 @@ function renderFreeplaySetup() {
       <h1>🎧 Freeplay</h1>
       <p class="song-artist">Play along to audio from anywhere — set the tempo, then lock in and tap as usual.</p>
       <h2>Tempo</h2>
+      <div class="song-search">
+        <input type="text" id="fpSearch" placeholder="Search a song name to find its BPM…">
+        <button class="btn" id="fpSearchBtn" type="button">Search BPM</button>
+      </div>
+      <div class="song-search-results" id="fpSearchResults"></div>
       <div class="freeplay-bpm">
         <label class="freeplay-bpm-field">BPM
           <input type="number" id="fpBpm" min="40" max="240" step="0.1" value="120">
@@ -157,6 +163,15 @@ function renderFreeplaySetup() {
     </div>
   `;
   root.querySelector('#fpTapBtn').addEventListener('click', () => tempoTap(performance.now()));
+  const fpSearch = root.querySelector('#fpSearch');
+  const runFpSearch = () => freeplaySearch(fpSearch.value);
+  root.querySelector('#fpSearchBtn').addEventListener('click', runFpSearch);
+  fpSearch.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      runFpSearch();
+    }
+  });
   root.querySelector('#fpStart').addEventListener('click', () => {
     const bpm = parseFloat(root.querySelector('#fpBpm').value);
     if (!(bpm >= 40 && bpm <= 240)) {
@@ -198,6 +213,64 @@ function flashFreeplayTap() {
   btn.classList.remove('flash');
   void btn.offsetWidth;
   btn.classList.add('flash');
+}
+
+// Look up BPM by song name (GetSongBPM). Results are clickable — picking one
+// fills the BPM field (fetching tempo on demand if the search row lacked it).
+async function freeplaySearch(query) {
+  const out = root.querySelector('#fpSearchResults');
+  if (!out) return;
+  if (!query.trim()) return;
+  if (!hasBpmKey()) {
+    out.innerHTML = `<p class="form-error">Add a GetSongBPM API key in <a href="#/settings">Settings</a> to search by name.</p>`;
+    return;
+  }
+  out.innerHTML = '<p class="hint">Searching…</p>';
+  let results;
+  try {
+    results = await searchSongBpm(query);
+  } catch (e) {
+    out.innerHTML = `<p class="form-error">${esc(e.message)}</p>`;
+    return;
+  }
+  if (!results.length) {
+    out.innerHTML = '<p class="hint">No matches. Try the exact title, or set the BPM manually.</p>';
+    return;
+  }
+  out.innerHTML =
+    results
+      .slice(0, 6)
+      .map(
+        (r, i) =>
+          `<button class="song-result" type="button" data-i="${i}">
+             <span class="song-result-name">${esc(r.title)}${r.artist ? ` · ${esc(r.artist)}` : ''}</span>
+             <span class="song-result-bpm">${r.tempo ? `${r.tempo} BPM` : 'BPM…'}</span>
+           </button>`
+      )
+      .join('') + `<a class="song-credit" href="${GETSONGBPM_CREDIT.url}" target="_blank" rel="noopener">${GETSONGBPM_CREDIT.label}</a>`;
+  out.querySelectorAll('.song-result').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const r = results[Number(btn.dataset.i)];
+      let tempo = r.tempo;
+      if (!tempo) {
+        btn.querySelector('.song-result-bpm').textContent = '…';
+        try {
+          tempo = await fetchTempo(r.id);
+        } catch {
+          tempo = null;
+        }
+      }
+      if (!tempo) {
+        btn.querySelector('.song-result-bpm').textContent = 'no BPM';
+        return;
+      }
+      const input = root.querySelector('#fpBpm');
+      if (input) input.value = tempo.toFixed(1);
+      root.querySelector('#fpTapInfo').textContent = `${tempo.toFixed(1)} BPM · ${r.title}`;
+      out.querySelectorAll('.song-result').forEach((b) => b.classList.remove('selected'));
+      btn.classList.add('selected');
+    })
+  );
 }
 
 function renderPlayPanel() {
