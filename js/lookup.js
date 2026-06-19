@@ -16,7 +16,7 @@ import { getData } from './storage.js';
 
 export const GETSONGBPM_CREDIT = { label: 'BPM data from GetSongBPM', url: 'https://getsongbpm.com' };
 
-const BPM_BASE = 'https://api.getsongbpm.com';
+const BPM_BASE = 'https://api.getsong.co';
 const YT_BASE = 'https://www.googleapis.com/youtube/v3/search';
 
 function settings() {

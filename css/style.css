@@ -229,6 +229,8 @@ input:focus { outline: none; border-color: var(--accent); }
 .song-result-name { font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .song-result-bpm { font-size: 0.82rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .song-credit { font-size: 0.72rem; color: var(--muted); align-self: flex-start; }
+.app-footer { margin: 2.5rem 0 1rem; text-align: center; font-size: 0.78rem; color: var(--muted); }
+.app-footer a { color: var(--muted); }
 
 .scoreboard { display: flex; align-items: center; gap: 2rem; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .scoreboard > div { display: flex; flex-direction: column; }
