@@ -828,17 +828,27 @@ function tick() {
   runBlindScheduler(beatFloat, vid);
 }
 
+// Blind windows are sized in musical quarter-note beats (so "4 bars" feels the
+// same regardless of whether you locked onto quarters, 16ths, or 32nds). The
+// scheduler runs in grid-beat space though, so convert with this factor: how
+// many grid beats make up one quarter note.
+function gridPerQuarter() {
+  return engine ? engine.basePeriod / engine.period : 1;
+}
+
 function runBlindScheduler(beatFloat, vid) {
   if (blind.mode === 'off' || blind.survivalOver) return;
   const cfg = BLIND_MODES[blind.mode];
+  const q = gridPerQuarter();
+  const barG = BAR * q; // grid beats per musical bar
 
   if (!blind.armed) {
     const stats = engine.getStats();
     if (stats.tapCount >= BLIND_GRACE_TAPS) {
       blind.armed = true;
-      // First window starts on the next bar boundary at least 1 bar out.
-      blind.nextStart = Math.ceil((beatFloat + BAR) / BAR) * BAR;
-      blind.windowEnd = blind.nextStart + blindLen(cfg, 0);
+      // First window starts on the next musical-bar boundary, at least 1 bar out.
+      blind.nextStart = Math.ceil((beatFloat + barG) / barG) * barG;
+      blind.windowEnd = blind.nextStart + blindLen(cfg, 0) * q;
     }
     return;
   }
@@ -848,10 +858,10 @@ function runBlindScheduler(beatFloat, vid) {
   } else if (blind.active) {
     const remaining = Math.max(0, blind.windowEnd - beatFloat);
     const count = root.querySelector('#blindCount');
-    if (count) count.textContent = `${Math.ceil(remaining)} beats`;
+    if (count) count.textContent = `${Math.ceil(remaining / q)} beats`; // shown in musical beats
 
-    // Survival dropout: stopped tapping mid-window.
-    if (BLIND_MODES[blind.mode]?.survivable && lastTapVid !== null && vid - lastTapVid > 2.5 * engine.period) {
+    // Survival dropout: stopped tapping for ~2.5 quarter notes.
+    if (cfg.survivable && lastTapVid !== null && vid - lastTapVid > 2.5 * engine.basePeriod) {
       endSurvival('dropout');
       return;
     }
@@ -883,11 +893,18 @@ function enterBlind() {
 
 function exitBlind(silent) {
   const cfg = BLIND_MODES[blind.mode];
+  const q = gridPerQuarter();
   blind.active = false;
   engine.setDriftFrozen(false);
   clock.unMute();
   root.querySelector('#blindOverlay').classList.add('hidden');
-  totalBlindBeatsDone += blind.windowEnd - blind.windowStartBeat;
+  totalBlindBeatsDone += (blind.windowEnd - blind.windowStartBeat) / q; // musical beats
+
+  // Reveal the window's taps in the history now that the window is over, for
+  // modes that hid timing live (Survival already pushed them as they happened).
+  if (!cfg.showBlindFeedback) {
+    for (const res of blind.windowTaps) pushHit(res);
+  }
 
   if (!silent) {
     const taps = blind.windowTaps;
@@ -903,17 +920,18 @@ function exitBlind(silent) {
   setStatus('Sound is back — keep tapping');
 
   blind.windowIdx++;
-  blind.nextStart = blind.windowEnd + cfg.audible;
-  blind.windowEnd = blind.nextStart + blindLen(cfg, blind.windowIdx);
+  blind.nextStart = blind.windowEnd + cfg.audible * q;
+  blind.windowEnd = blind.nextStart + blindLen(cfg, blind.windowIdx) * q;
 }
 
 function endSurvival(why) {
   blind.survivalOver = true;
-  // Count only the beats actually survived inside the fatal window.
+  // Count only the beats actually survived inside the fatal window (musical beats).
+  const q = gridPerQuarter();
   const vid = clock.videoTimeAt(performance.now());
   const beatFloat = (vid - engine.phase) / engine.period;
-  const partial = Math.max(0, Math.min(beatFloat, blind.windowEnd) - blind.windowStartBeat);
-  const fullLen = blind.windowEnd - blind.windowStartBeat;
+  const partial = (Math.max(0, Math.min(beatFloat, blind.windowEnd) - blind.windowStartBeat)) / q;
+  const fullLen = (blind.windowEnd - blind.windowStartBeat) / q;
   exitBlind(true); // adds fullLen to the total; correct it to the partial below
   totalBlindBeatsDone += partial - fullLen;
   showToast(why === 'miss' ? '💥 Missed while blind — survival over!' : '💥 Lost the thread — survival over!');

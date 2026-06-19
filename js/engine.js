@@ -297,6 +297,9 @@ export function createEngine({ bpm, anchorTapCount = 8 }) {
     get period() {
       return T;
     },
+    get basePeriod() {
+      return baseT; // quarter-note period, independent of the locked subdivision
+    },
     get windows() {
       return windows;
     },
