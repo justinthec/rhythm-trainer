@@ -9,6 +9,7 @@ import * as settings from './views/settings.js';
 
 const routes = [
   { pattern: /^#\/select$/, view: songselect },
+  { pattern: /^#\/freeplay$/, view: game, params: () => ({ freeplay: true }) },
   { pattern: /^#\/game\/(.+)$/, view: game, params: (m) => ({ songId: m[1] }) },
   { pattern: /^#\/dashboard$/, view: dashboard },
   { pattern: /^#\/settings$/, view: settings },

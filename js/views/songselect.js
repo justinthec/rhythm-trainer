@@ -10,6 +10,13 @@ export function render(el) {
   el.innerHTML = `
     <h1>Pick a song</h1>
     <p class="hint">Tap along on the beat — Space, F/J keys, or the tap pad under the video.</p>
+    <a class="freeplay-card" href="#/freeplay">
+      <div class="freeplay-card-icon">🎧</div>
+      <div>
+        <div class="freeplay-card-title">Freeplay — no video</div>
+        <div class="freeplay-card-sub">Already listening elsewhere? Set a tempo and play along to your own audio.</div>
+      </div>
+    </a>
     <div class="song-grid" id="songGrid"></div>
     <details class="add-song">
       <summary>+ Add custom song</summary>

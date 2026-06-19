@@ -3,7 +3,7 @@
 import { findSong } from '../songs.js';
 import { getData, update, addSession, newId } from '../storage.js';
 import { createEngine } from '../engine.js';
-import { createVideoClock, PlayerState } from '../youtube.js';
+import { createVideoClock, createInternalClock, PlayerState } from '../youtube.js';
 import { drawHistogram, drawAccuracyTimeline } from '../charts.js';
 import { createClapDetector } from '../mic.js';
 
@@ -37,6 +37,8 @@ let debugOverlayOn = false;
 let toastTimer = null;
 let lastPulseBeat = null;
 let clap = null; // experimental clap detector (mic input)
+let freeplay = false; // no-video mode: play along to external audio
+let fpTaps = []; // tempo-tap timestamps during freeplay setup
 
 // Mic clap detection lags the real clap by the FFT window + frame latency;
 // shift detected onsets earlier to compensate. Fine-tune via input offset.
@@ -53,12 +55,19 @@ function effectiveVideoId() {
 export function render(el, params) {
   leave();
   root = el;
-  song = findSong(decodeURIComponent(params.songId || ''), getData().customSongs);
-  if (!song) {
-    el.innerHTML = `<p>Song not found. <a href="#/select">Back to songs</a></p>`;
-    return;
+  freeplay = !!params.freeplay;
+  if (freeplay) {
+    // Synthetic song; BPM is chosen in the setup step before play.
+    song = { id: 'freeplay', title: 'Freeplay', artist: 'Your own audio', bpm: 120 };
+    renderFreeplaySetup();
+  } else {
+    song = findSong(decodeURIComponent(params.songId || ''), getData().customSongs);
+    if (!song) {
+      el.innerHTML = `<p>Song not found. <a href="#/select">Back to songs</a></p>`;
+      return;
+    }
+    renderStartPanel();
   }
-  renderStartPanel();
 
   keyHandler = (e) => onKey(e);
   window.addEventListener('keydown', keyHandler);
@@ -76,6 +85,7 @@ export function leave() {
   clock = null;
   if (clap) clap.stop();
   clap = null;
+  fpTaps = [];
   engine = null;
   blind = null;
   autotap = null;
@@ -123,6 +133,73 @@ function renderStartPanel() {
   });
 }
 
+// Freeplay: no video. Set a tempo (typed or tapped), then play along to audio
+// from anywhere else. Flying Blind is unavailable here (can't mute outside audio).
+function renderFreeplaySetup() {
+  phase = 'setup';
+  fpTaps = [];
+  root.innerHTML = `
+    <a class="back" href="#/select">← Songs</a>
+    <div class="start-panel">
+      <h1>🎧 Freeplay</h1>
+      <p class="song-artist">Play along to audio from anywhere — set the tempo, then lock in and tap as usual.</p>
+      <h2>Tempo</h2>
+      <div class="freeplay-bpm">
+        <label class="freeplay-bpm-field">BPM
+          <input type="number" id="fpBpm" min="40" max="240" step="0.1" value="120">
+        </label>
+        <button class="btn" id="fpTapBtn" type="button">Tap tempo</button>
+        <span class="freeplay-tapinfo" id="fpTapInfo">tap 4+ times</span>
+      </div>
+      <p class="hint">Type a BPM, or tap the button (or Space / F / J) along with your music to find it.</p>
+      <button id="fpStart" class="btn primary big">▶ Start</button>
+      <p class="hint">Then tap ${settings().anchorTapCount} steady beats to lock the grid to your audio, and keep tapping.</p>
+    </div>
+  `;
+  root.querySelector('#fpTapBtn').addEventListener('click', () => tempoTap(performance.now()));
+  root.querySelector('#fpStart').addEventListener('click', () => {
+    const bpm = parseFloat(root.querySelector('#fpBpm').value);
+    if (!(bpm >= 40 && bpm <= 240)) {
+      root.querySelector('#fpTapInfo').textContent = 'BPM must be 40–240';
+      return;
+    }
+    song.bpm = bpm;
+    startGame('off');
+  });
+}
+
+// Estimate BPM from the spacing of recent taps (median interval, folded into
+// the musical 40–240 range). Resets if you pause more than 2s between taps.
+function tempoTap(now) {
+  if (fpTaps.length && now - fpTaps[fpTaps.length - 1] > 2000) fpTaps = [];
+  fpTaps.push(now);
+  if (fpTaps.length > 8) fpTaps.shift();
+  flashFreeplayTap();
+  const info = root.querySelector('#fpTapInfo');
+  if (fpTaps.length < 2) {
+    if (info) info.textContent = 'keep tapping…';
+    return;
+  }
+  const intervals = [];
+  for (let i = 1; i < fpTaps.length; i++) intervals.push(fpTaps[i] - fpTaps[i - 1]);
+  intervals.sort((a, b) => a - b);
+  const med = intervals[Math.floor(intervals.length / 2)];
+  let bpm = 60000 / med;
+  while (bpm < 40) bpm *= 2;
+  while (bpm > 240) bpm /= 2;
+  const input = root.querySelector('#fpBpm');
+  if (input) input.value = bpm.toFixed(1);
+  if (info) info.textContent = `${bpm.toFixed(1)} BPM · ${fpTaps.length} taps`;
+}
+
+function flashFreeplayTap() {
+  const btn = root.querySelector('#fpTapBtn');
+  if (!btn) return;
+  btn.classList.remove('flash');
+  void btn.offsetWidth;
+  btn.classList.add('flash');
+}
+
 function renderPlayPanel() {
   root.innerHTML = `
     <div class="game-top">
@@ -131,13 +208,21 @@ function renderPlayPanel() {
       <div class="game-buttons">
         <button id="clapBtn" class="btn small" title="Experimental: clap into your mic instead of tapping">🎤 Clap</button>
         <button id="reAnchorBtn" class="btn small" title="Redo the lock-in taps — score is kept">↻ Re-lock</button>
-        <button id="pauseBtn" class="btn small">⏸</button>
+        ${freeplay ? '' : '<button id="pauseBtn" class="btn small">⏸</button>'}
         <button id="finishBtn" class="btn small">Finish</button>
       </div>
     </div>
-    <div class="video-wrap" id="videoWrap">
-      <div id="ytTarget"></div>
-      <div class="click-shield" id="clickShield"></div>
+    <div class="video-wrap${freeplay ? ' freeplay-wrap' : ''}" id="videoWrap">
+      ${
+        freeplay
+          ? `<div class="freeplay-stage">
+               <div class="freeplay-bpm-big">${song.bpm.toFixed(1)} BPM</div>
+               <div class="freeplay-pulse" id="freeplayPulse"></div>
+               <div class="freeplay-stage-hint">Tap along to your own audio</div>
+             </div>`
+          : `<div id="ytTarget"></div>
+             <div class="click-shield" id="clickShield"></div>`
+      }
       <div class="blind-overlay hidden" id="blindOverlay">
         <div class="blind-title">FLYING BLIND</div>
         <div class="blind-count" id="blindCount"></div>
@@ -145,12 +230,12 @@ function renderPlayPanel() {
         <div class="blind-blip" id="blindBlip"></div>
       </div>
       <div class="play-gate" id="playGate">
-        <button class="play-btn" id="playBtn" disabled>Loading video…</button>
+        <button class="play-btn" id="playBtn"${freeplay ? '' : ' disabled'}>${freeplay ? '▶ Start' : 'Loading video…'}</button>
       </div>
       <div class="debug-overlay hidden" id="debugOverlay"></div>
     </div>
     <div class="hud">
-      <div class="status-line" id="statusLine">Loading video…</div>
+      <div class="status-line" id="statusLine">${freeplay ? 'Tap ▶ Start, then lock in to your audio' : 'Loading video…'}</div>
       <div class="feedback" id="feedback">&nbsp;</div>
       <div class="timing-bar" id="timingBar">
         <div class="tb-zone tb-okay"></div>
@@ -195,7 +280,7 @@ function renderPlayPanel() {
     if (clock) clock.play();
   });
   root.querySelector('#reAnchorBtn').addEventListener('click', reAnchorNow);
-  root.querySelector('#pauseBtn').addEventListener('click', togglePause);
+  root.querySelector('#pauseBtn')?.addEventListener('click', togglePause);
   root.querySelector('#finishBtn').addEventListener('click', () => finishSession('finished'));
   root.querySelector('#clapBtn').addEventListener('click', toggleClapMode);
   const sens = root.querySelector('#clapSens');
@@ -242,11 +327,32 @@ function renderErrorPanel(code) {
 
 // ---------- game lifecycle ----------
 
+// Shared player-state handling for both the video clock and the internal
+// (Freeplay) clock: hide the gate and start anchoring on play, re-show it on pause.
+function handleStateChange(s) {
+  if (s === PlayerState.ENDED) finishSession('video ended');
+  if (s === PlayerState.PLAYING) {
+    const gate = root.querySelector('#playGate');
+    if (gate) gate.classList.add('hidden');
+  }
+  if (s === PlayerState.PLAYING && phase === 'loading') {
+    phase = 'anchoring';
+    setStatus(`TAP ALONG TO LOCK IN — 0/${settings().anchorTapCount}`);
+  }
+  if (s === PlayerState.PAUSED && (phase === 'anchoring' || phase === 'tracking')) {
+    const gate = root.querySelector('#playGate');
+    const btn = root.querySelector('#playBtn');
+    if (btn) btn.textContent = '▶ Resume';
+    if (gate) gate.classList.remove('hidden');
+    setStatus('Paused — tap ▶ Resume');
+  }
+}
+
 function startGame(blindMode) {
   phase = 'loading';
   engine = createEngine({ bpm: song.bpm, anchorTapCount: settings().anchorTapCount });
   blind = {
-    mode: blindMode,
+    mode: freeplay ? 'off' : blindMode, // can't mute external audio for blind windows
     active: false,
     nextStart: null, // beat numbers in grid space
     windowEnd: null,
@@ -263,27 +369,17 @@ function startGame(blindMode) {
 
   renderPlayPanel();
 
+  if (freeplay) {
+    clock = createInternalClock({ onStateChange: handleStateChange });
+    // No media to load — the Start button is live immediately.
+    rafId = requestAnimationFrame(tick);
+    return;
+  }
+
   clock = createVideoClock({
     container: root.querySelector('#ytTarget'),
     videoId: effectiveVideoId(),
-    onStateChange: (s) => {
-      if (s === PlayerState.ENDED) finishSession('video ended');
-      if (s === PlayerState.PLAYING) {
-        const gate = root.querySelector('#playGate');
-        if (gate) gate.classList.add('hidden');
-      }
-      if (s === PlayerState.PLAYING && phase === 'loading') {
-        phase = 'anchoring';
-        setStatus(`TAP ALONG TO LOCK IN — 0/${settings().anchorTapCount}`);
-      }
-      if (s === PlayerState.PAUSED && (phase === 'anchoring' || phase === 'tracking')) {
-        const gate = root.querySelector('#playGate');
-        const btn = root.querySelector('#playBtn');
-        if (btn) btn.textContent = '▶ Resume';
-        if (gate) gate.classList.remove('hidden');
-        setStatus('Paused — tap ▶ Resume');
-      }
-    },
+    onStateChange: handleStateChange,
     onError: (code) => {
       if (clock) clock.destroy();
       clock = null;
@@ -408,7 +504,8 @@ function finishSession(reason) {
   rafId = null;
 
   if (stats.tapCount < 4) {
-    renderStartPanel();
+    if (freeplay) renderFreeplaySetup();
+    else renderStartPanel();
     return;
   }
   phase = 'results';
@@ -523,7 +620,7 @@ function renderResults(stats, blindStats, reason) {
   `;
   drawAccuracyTimeline(root.querySelector('#accChart'), stats.timeline);
   drawHistogram(root.querySelector('#histChart'), stats.histogram);
-  root.querySelector('#againBtn').addEventListener('click', () => renderStartPanel());
+  root.querySelector('#againBtn').addEventListener('click', () => (freeplay ? renderFreeplaySetup() : renderStartPanel()));
 }
 
 // ---------- input ----------
@@ -541,6 +638,10 @@ function onKey(e) {
   if (e.code === 'Space' || e.code === 'KeyF' || e.code === 'KeyJ') {
     e.preventDefault();
     if (e.repeat) return;
+    if (phase === 'setup') {
+      tempoTap(normalizeStamp(e));
+      return;
+    }
     doTap(normalizeStamp(e));
   } else if (e.key === 'd' || e.key === 'D') {
     debugOverlayOn = !debugOverlayOn;
@@ -636,18 +737,20 @@ function tick() {
   if (engine.state !== 'tracking') return;
   const beatFloat = (vid - engine.phase) / engine.period;
 
-  // Beat pulse (hidden while blind).
+  // Beat pulse (hidden while blind) — the scoreboard dot, plus the big
+  // Freeplay stage indicator when there's no video to watch.
+  const k = Math.floor(beatFloat);
   const pulse = root.querySelector('#beatPulse');
-  if (pulse) {
-    const k = Math.floor(beatFloat);
-    if (k !== lastPulseBeat && !blind.active) {
-      lastPulseBeat = k;
-      pulse.classList.remove('pulse');
-      void pulse.offsetWidth; // restart the CSS animation
-      pulse.classList.add('pulse');
+  if (k !== lastPulseBeat && !blind.active) {
+    lastPulseBeat = k;
+    for (const el of [pulse, root.querySelector('#freeplayPulse')]) {
+      if (!el) continue;
+      el.classList.remove('pulse');
+      void el.offsetWidth; // restart the CSS animation
+      el.classList.add('pulse');
     }
-    pulse.classList.toggle('hidden', blind.active);
   }
+  if (pulse) pulse.classList.toggle('hidden', blind.active);
 
   runBlindScheduler(beatFloat, vid);
 }

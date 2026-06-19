@@ -203,3 +203,55 @@ export function createVideoClock({ container, videoId, onStateChange, onError, o
     },
   };
 }
+
+// A videoless "internal" clock for Freeplay mode, where the player listens to
+// audio from somewhere else. There's nothing to sync to, so video time is just
+// real time elapsed while playing. It implements the same surface as
+// createVideoClock so the game view can use either interchangeably. Pausing
+// freezes the clock (it can't pause the user's external audio), so resuming
+// keeps grid phase continuous — re-lock if the audio has drifted.
+export function createInternalClock({ onStateChange } = {}) {
+  let running = false;
+  let baseVid = 0; // vid ms accumulated before the current play segment
+  let segStart = 0; // performance.now() when the current segment began
+  let state = PlayerState.CUED;
+  let destroyed = false;
+
+  const vidAt = (perfMs) => (running ? baseVid + (perfMs - segStart) : baseVid);
+  function setState(s) {
+    state = s;
+    if (onStateChange) onStateChange(s);
+  }
+
+  return {
+    ready: Promise.resolve(),
+    get player() {
+      return null;
+    },
+    isMappingReady: () => true,
+    videoTimeAt: (perfMs) => vidAt(perfMs),
+    perfTimeAt: (vidMs) => (running ? segStart + (vidMs - baseVid) : null),
+    debugInfo: () => ({ ready: true, slope: 1, edges: 0, lastResidual: 0 }),
+    play() {
+      if (destroyed || running) return;
+      segStart = performance.now();
+      running = true;
+      setState(PlayerState.PLAYING);
+    },
+    pause() {
+      if (destroyed || !running) return;
+      baseVid = vidAt(performance.now());
+      running = false;
+      setState(PlayerState.PAUSED);
+    },
+    mute() {},
+    unMute() {},
+    getPlayerState() {
+      return state;
+    },
+    destroy() {
+      destroyed = true;
+      running = false;
+    },
+  };
+}
