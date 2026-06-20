@@ -1,6 +1,6 @@
 // Song select view: seed catalog + custom songs + add-song form.
 
-import { SEED_SONGS, parseYouTubeId } from '../songs.js';
+import { SEED_SONGS, parseYouTubeId, parseTimestamp } from '../songs.js';
 import { getData, update, newId } from '../storage.js';
 import { searchSongBpm, fetchTempo, searchYouTube, hasBpmKey, hasYouTubeKey, GETSONGBPM_CREDIT } from '../lookup.js';
 
@@ -31,6 +31,7 @@ export function render(el) {
         <label>Title <input name="title" required placeholder="Song title"></label>
         <label>Artist <input name="artist" required placeholder="Artist"></label>
         <label>BPM <input name="bpm" type="number" min="40" max="240" step="0.1" required placeholder="120"></label>
+        <label>Start at <input name="start" placeholder="0:00 — skip intro (optional)"></label>
         <button type="submit" class="btn primary">Add song</button>
         <span class="form-error" id="addSongError"></span>
       </form>
@@ -88,6 +89,11 @@ export function render(el) {
       err.textContent = 'BPM must be between 40 and 240.';
       return;
     }
+    const startSec = parseTimestamp(f.get('start'));
+    if (startSec == null) {
+      err.textContent = 'Start time must be seconds (90) or m:ss (1:30).';
+      return;
+    }
     update((d) => {
       d.customSongs.push({
         id: newId('c'),
@@ -95,6 +101,7 @@ export function render(el) {
         artist: String(f.get('artist')).trim(),
         bpm,
         videoId,
+        startSec,
         createdAt: Date.now(),
       });
     });

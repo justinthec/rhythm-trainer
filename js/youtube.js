@@ -36,7 +36,7 @@ export function loadIframeAPI() {
 
 export const PlayerState = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 };
 
-export function createVideoClock({ container, videoId, onStateChange, onError, onFlush, onMappingReady }) {
+export function createVideoClock({ container, videoId, startSeconds = 0, onStateChange, onError, onFlush, onMappingReady }) {
   let player = null;
   let pollTimer = null;
   let edges = []; // { p: perfMs, v: videoMs }
@@ -122,6 +122,7 @@ export function createVideoClock({ container, videoId, onStateChange, onError, o
             playsinline: 1,
             modestbranding: 1,
             iv_load_policy: 3,
+            start: Math.max(0, Math.floor(startSeconds)) || 0,
           },
           events: {
             onReady: () => resolve(),

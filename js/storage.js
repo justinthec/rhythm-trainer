@@ -14,6 +14,7 @@ const DEFAULT_STATE = {
     lastBlindMode: 'off',
     lastCalibration: null, // { offset, stdDev, date }
     videoOverrides: {}, // songId -> replacement videoId
+    startOverrides: {}, // songId -> start time in seconds (skip intro)
     getSongBpmKey: '', // getsongbpm.com API key (BPM lookup)
     youtubeApiKey: '', // YouTube Data API v3 key (video search)
     polyrhythm: false, // experimental: accept triplet-grid taps too

@@ -1,6 +1,6 @@
 // Game view: video playback, tap capture, live feedback, Flying Blind mode.
 
-import { findSong } from '../songs.js';
+import { findSong, parseTimestamp, formatTimestamp } from '../songs.js';
 import { getData, update, addSession, newId } from '../storage.js';
 import { createEngine } from '../engine.js';
 import { createVideoClock, createInternalClock, PlayerState } from '../youtube.js';
@@ -52,6 +52,11 @@ function settings() {
 
 function effectiveVideoId() {
   return settings().videoOverrides?.[song.id] || song.videoId;
+}
+
+function effectiveStartSec() {
+  const o = settings().startOverrides?.[song.id];
+  return Number.isFinite(o) ? o : song.startSec || 0;
 }
 
 export function render(el, params) {
@@ -117,6 +122,11 @@ function renderStartPanel() {
           )
           .join('')}
       </div>
+      <h2>Start at</h2>
+      <div class="start-at">
+        <input type="text" id="startAt" placeholder="0:00" value="${formatTimestamp(effectiveStartSec())}">
+        <span class="hint">skip the intro — seconds or m:ss</span>
+      </div>
       <button id="startBtn" class="btn primary big">▶ Start</button>
       <p class="hint">First, tap ${settings().anchorTapCount} steady beats to lock the grid to the song. Then keep tapping — every tap is scored.</p>
     </div>
@@ -128,8 +138,10 @@ function renderStartPanel() {
   );
   root.querySelector('#startBtn').addEventListener('click', () => {
     const mode = root.querySelector('input[name=blindMode]:checked').value;
+    const startSec = parseTimestamp(root.querySelector('#startAt').value);
     update((d) => {
       d.settings.lastBlindMode = mode;
+      if (startSec != null) d.settings.startOverrides = { ...(d.settings.startOverrides || {}), [song.id]: startSec };
     });
     startGame(mode);
   });
@@ -461,6 +473,7 @@ function startGame(blindMode) {
   clock = createVideoClock({
     container: root.querySelector('#ytTarget'),
     videoId: effectiveVideoId(),
+    startSeconds: effectiveStartSec(),
     onStateChange: handleStateChange,
     onError: (code) => {
       if (clock) clock.destroy();
