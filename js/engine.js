@@ -100,9 +100,10 @@ export function trendVerdict(slope, r, tapCount) {
   return 'steady';
 }
 
-export function createEngine({ bpm, anchorTapCount = 8 }) {
+export function createEngine({ bpm, anchorTapCount = 8, polyrhythm = false }) {
   const baseT = 60000 / bpm;
   let T = baseT; // effective grid period; set to the tapped subdivision at lock
+  let poly = !!polyrhythm; // experimental: also accept triplet-grid taps
   let windows = timingWindows(bpm);
   // Debounce only while anchoring — the tapped subdivision isn't known yet,
   // so T/4 of the base period could swallow legitimate fast subdivisions
@@ -117,6 +118,7 @@ export function createEngine({ bpm, anchorTapCount = 8 }) {
 
   let lastTapAt = null;
   const scoredBeats = new Set();
+  const scoredTripletBeats = new Set(); // separate dedup for the triplet layer
   const taps = []; // { t, delta, rawDelta, rating, blind, beatIndex }
 
   let score = 0;
@@ -184,6 +186,7 @@ export function createEngine({ bpm, anchorTapCount = 8 }) {
     refractory = 120;
     lastTapAt = null;
     scoredBeats.clear(); // beat indices are meaningless under the new grid
+    scoredTripletBeats.clear();
   }
 
   function addTap(t, { blind = false } = {}) {
@@ -198,15 +201,38 @@ export function createEngine({ bpm, anchorTapCount = 8 }) {
       return { type: 'anchor', count: anchorTaps.length, needed: anchorTapCount };
     }
 
-    const k = beatIndexFor(t);
-    const delta = t - (phi + k * T);
+    // Pick the beat this tap belongs to. Normally that's the main grid; in
+    // polyrhythm mode we also offer a triplet grid (three even beats per quarter
+    // note, sharing the drift-corrected phase) and take whichever is nearer, so
+    // e.g. triplets over a 4/4 pulse register. Each grid dedups independently.
+    let k, delta, dedup;
+    if (poly) {
+      const Ttri = baseT / 3;
+      const kMain = Math.round((t - phi) / T);
+      const dMain = t - (phi + kMain * T);
+      const kTri = Math.round((t - phi) / Ttri);
+      const dTri = t - (phi + kTri * Ttri);
+      if (Math.abs(dTri) < Math.abs(dMain)) {
+        k = kTri;
+        delta = dTri;
+        dedup = scoredTripletBeats;
+      } else {
+        k = kMain;
+        delta = dMain;
+        dedup = scoredBeats;
+      }
+    } else {
+      k = beatIndexFor(t);
+      delta = t - (phi + k * T);
+      dedup = scoredBeats;
+    }
     const rawDelta = delta + (phi - phi0); // relative to the un-corrected grid
 
-    if (scoredBeats.has(k)) {
+    if (dedup.has(k)) {
       counts.extra++;
       return { type: 'extra', beatIndex: k, delta };
     }
-    scoredBeats.add(k);
+    dedup.add(k);
 
     const rating = classifyDelta(delta, windows);
     counts[rating]++;
@@ -241,9 +267,10 @@ export function createEngine({ bpm, anchorTapCount = 8 }) {
       }
     }
 
-    // Slow drift correction keeps the grid glued to the real song tempo,
-    // but never while blind (it would absorb exactly the drift we measure).
-    if (!blind && !driftFrozen && Math.abs(delta) <= windows.good) {
+    // Slow drift correction keeps the grid glued to the real song tempo, but
+    // never while blind (it would absorb exactly the drift we measure) and only
+    // from main-grid hits (triplet-layer deltas shouldn't pull the main phase).
+    if (!blind && !driftFrozen && dedup === scoredBeats && Math.abs(delta) <= windows.good) {
       phi += DRIFT_ALPHA * delta;
     }
 
@@ -308,6 +335,9 @@ export function createEngine({ bpm, anchorTapCount = 8 }) {
     },
     setDriftFrozen(frozen) {
       driftFrozen = frozen;
+    },
+    setPolyrhythm(on) {
+      poly = !!on;
     },
     beatIndexFor,
     beatTime(k) {

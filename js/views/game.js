@@ -40,6 +40,7 @@ let lastPulseBeat = null;
 let clap = null; // experimental clap detector (mic input)
 let freeplay = false; // no-video mode: play along to external audio
 let fpTaps = []; // tempo-tap timestamps during freeplay setup
+let currentBlindMode = 'off'; // remembered so Restart can replay the same run
 
 // Mic clap detection lags the real clap by the FFT window + frame latency;
 // shift detected onsets earlier to compensate. Fine-tune via input offset.
@@ -279,8 +280,10 @@ function renderPlayPanel() {
       <a class="back" href="#/select">← Quit</a>
       <div class="game-song">${esc(song.title)} · ${song.bpm} BPM</div>
       <div class="game-buttons">
+        <button id="polyBtn" class="btn small" title="Experimental: also register triplets over the main beat">🔺 Triplets</button>
         <button id="clapBtn" class="btn small" title="Experimental: clap into your mic instead of tapping">🎤 Clap</button>
         <button id="reAnchorBtn" class="btn small" title="Redo the lock-in taps — score is kept">↻ Re-lock</button>
+        <button id="restartBtn" class="btn small" title="Restart this run from the beginning">↺ Restart</button>
         ${freeplay ? '' : '<button id="pauseBtn" class="btn small">⏸</button>'}
         <button id="finishBtn" class="btn small">Finish</button>
       </div>
@@ -353,9 +356,13 @@ function renderPlayPanel() {
     if (clock) clock.play();
   });
   root.querySelector('#reAnchorBtn').addEventListener('click', reAnchorNow);
+  root.querySelector('#restartBtn').addEventListener('click', restartGame);
   root.querySelector('#pauseBtn')?.addEventListener('click', togglePause);
   root.querySelector('#finishBtn').addEventListener('click', () => finishSession('finished'));
   root.querySelector('#clapBtn').addEventListener('click', toggleClapMode);
+  const polyBtn = root.querySelector('#polyBtn');
+  polyBtn.classList.toggle('active', !!settings().polyrhythm);
+  polyBtn.addEventListener('click', togglePoly);
   const sens = root.querySelector('#clapSens');
   sens.value = String(settings().clapSensitivity ?? 0.5);
   sens.addEventListener('input', () => {
@@ -423,7 +430,8 @@ function handleStateChange(s) {
 
 function startGame(blindMode) {
   phase = 'loading';
-  engine = createEngine({ bpm: song.bpm, anchorTapCount: settings().anchorTapCount });
+  currentBlindMode = blindMode; // remembered for Restart
+  engine = createEngine({ bpm: song.bpm, anchorTapCount: settings().anchorTapCount, polyrhythm: !!settings().polyrhythm });
   blind = {
     mode: freeplay ? 'off' : blindMode, // can't mute external audio for blind windows
     active: false,
@@ -463,7 +471,7 @@ function startGame(blindMode) {
       if (phase === 'tracking') setStatus('Re-syncing to video…');
       if (phase === 'anchoring' && engine.anchorProgress > 0) {
         // Anchor taps spanned a seek/ad — start the count over.
-        engine = createEngine({ bpm: song.bpm, anchorTapCount: settings().anchorTapCount });
+        engine = createEngine({ bpm: song.bpm, anchorTapCount: settings().anchorTapCount, polyrhythm: !!settings().polyrhythm });
         setStatus(`Video jumped — tap to lock in again — 0/${settings().anchorTapCount}`);
       }
     },
@@ -514,6 +522,36 @@ function togglePause() {
   if (!clock) return;
   if (clock.getPlayerState() === PlayerState.PLAYING) clock.pause();
   else clock.play();
+}
+
+// Replay the current song from the top with a clean engine/score. Reuses the
+// full setup so video and Freeplay both get a fresh play gate to start from.
+function restartGame() {
+  if (clap) {
+    clap.stop();
+    clap = null;
+  }
+  if (clock) {
+    clock.destroy();
+    clock = null;
+  }
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = null;
+  clearInterval(focusWatchdog);
+  focusWatchdog = null;
+  startGame(currentBlindMode);
+}
+
+// Experimental: also accept triplet-grid taps (e.g. triplets over a 4/4 pulse).
+function togglePoly() {
+  const on = !settings().polyrhythm;
+  update((d) => {
+    d.settings.polyrhythm = on;
+  });
+  if (engine) engine.setPolyrhythm(on);
+  const btn = root.querySelector('#polyBtn');
+  if (btn) btn.classList.toggle('active', on);
+  setStatus(on ? 'Triplets on — triplet taps over the beat now register' : 'Triplets off');
 }
 
 // ---------- experimental: clap (mic) input ----------

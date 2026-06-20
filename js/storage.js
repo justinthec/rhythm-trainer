@@ -16,6 +16,7 @@ const DEFAULT_STATE = {
     videoOverrides: {}, // songId -> replacement videoId
     getSongBpmKey: '', // getsongbpm.com API key (BPM lookup)
     youtubeApiKey: '', // YouTube Data API v3 key (video search)
+    polyrhythm: false, // experimental: accept triplet-grid taps too
   },
   customSongs: [],
   sessions: [],

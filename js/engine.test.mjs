@@ -248,6 +248,38 @@ console.log('— re-anchor keeps score, replaces grid —');
   assert(t2.type === 'tap' && t2.rating === 'perfect', 'taps score perfectly on the new grid');
 }
 
+console.log('— polyrhythm: triplets register over a 4/4 grid —');
+{
+  // Lock onto quarters at 120 BPM (T=500). baseT/3 ≈ 166.7ms triplet grid.
+  const eng = createEngine({ bpm: 120, anchorTapCount: 8, polyrhythm: true });
+  for (let k = 0; k < 8; k++) eng.addTap(k * 500 + jitter(8));
+  const Ttri = 500 / 3;
+  const ratings = [];
+  for (let i = 0; i < 6; i++) {
+    const r = eng.addTap(4000 + i * Ttri + jitter(6)); // eighth-note triplets across 2 beats
+    if (r.type === 'tap') ratings.push(r.rating);
+  }
+  assert(ratings.length === 6, 'all 6 triplet taps are scored (not deduped away)');
+  assert(ratings.every((r) => r !== 'miss'), 'triplet taps land on the triplet grid (no misses)');
+
+  // Same triplets WITHOUT polyrhythm: most should miss the quarter grid.
+  const eng2 = createEngine({ bpm: 120, anchorTapCount: 8 }); // poly off
+  for (let k = 0; k < 8; k++) eng2.addTap(k * 500 + jitter(8));
+  let offGrid = 0;
+  for (let i = 0; i < 6; i++) {
+    const r = eng2.addTap(4000 + i * Ttri + jitter(6));
+    if (r.type === 'miss' || r.rating === 'miss' || r.type === 'extra') offGrid++;
+  }
+  assert(offGrid >= 3, `without polyrhythm, triplets mostly fail the grid (${offGrid}/6 off)`);
+
+  // Polyrhythm must not wreck plain on-grid quarter tapping.
+  const eng3 = createEngine({ bpm: 120, anchorTapCount: 8, polyrhythm: true });
+  for (let k = 0; k < 8; k++) eng3.addTap(k * 500 + jitter(8));
+  let q = null;
+  for (let k = 8; k < 28; k++) q = eng3.addTap(k * 500 + jitter(8));
+  assert(q.type === 'tap' && q.rating !== 'miss', 'on-grid quarter taps still score with poly on');
+}
+
 console.log('— grades —');
 {
   assert(gradeFor(95) === 'S' && gradeFor(94.9) === 'A', 'S/A boundary');
