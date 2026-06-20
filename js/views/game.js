@@ -434,6 +434,7 @@ function startGame(blindMode) {
     armed: false,
     survivalOver: false,
     consecutiveMisses: 0,
+    historyBand: null,
   };
   blindWindowEndDeltas = [];
   totalBlindBeatsDone = 0;
@@ -757,7 +758,7 @@ function doTap(perfT) {
         const cfg = BLIND_MODES[blind.mode];
         if (cfg.showBlindFeedback) {
           showTapFeedback(res);
-          pushHit(res);
+          pushHit(res, blind.historyBand); // grows the live blind band
         } else if (res.rating === 'miss') {
           const dir = res.delta < 0 ? 'EARLY' : 'LATE';
           blipFeedback(`<span class="c-miss">MISS — ${dir}</span>`, '');
@@ -878,6 +879,9 @@ function enterBlind() {
   blind.windowTaps = [];
   blind.windowStartBeat = blind.nextStart;
   blind.consecutiveMisses = 0;
+  // Modes that show timing live grow their band as taps land; no-feedback modes
+  // get their band built at window end (flushBlindWindowToHistory).
+  blind.historyBand = BLIND_MODES[blind.mode]?.showBlindFeedback ? createHistoryBand() : null;
   engine.setDriftFrozen(true);
   clock.mute();
   root.querySelector('#blindOverlay').classList.remove('hidden');
@@ -903,7 +907,7 @@ function exitBlind(silent) {
   // Reveal the window's taps in the history now that the window is over, for
   // modes that hid timing live (Survival already pushed them as they happened).
   if (!cfg.showBlindFeedback) {
-    for (const res of blind.windowTaps) pushHit(res);
+    flushBlindWindowToHistory(blind.windowTaps);
   }
 
   if (!silent) {
@@ -984,25 +988,73 @@ function showTapFeedback(res) {
 
 const MAX_HITS = 64; // recent taps kept on the history strip
 const HIT_RANGE_MS = 120; // |delta| mapped to full vertical deflection
+const HIT_FLUSH_STAGGER_MS = 35; // per-dot delay when a blind window reveals
 
-// Append the latest tap to the on-screen history strip: horizontal = time
-// (newest on the right), vertical = early (up) / late (down), color = rating.
-function pushHit(res) {
-  const dots = root.querySelector('#hitDots');
-  if (!dots) return;
+// Build a history dot. Vertical offset (early up / late down) is kept in a CSS
+// var so the reveal animation can scale the dot without clobbering it.
+function makeDot(res) {
   const dot = document.createElement('div');
   dot.className = `hit-dot c-${res.rating}-bg`;
   const clamped = Math.max(-HIT_RANGE_MS, Math.min(HIT_RANGE_MS, res.delta));
   const offset = (clamped / HIT_RANGE_MS) * 20; // px; early(−)=up, late(+)=down
-  dot.style.transform = `translateY(${offset.toFixed(1)}px)`;
+  dot.style.setProperty('--ty', `${offset.toFixed(1)}px`);
+  dot.style.transform = 'translateY(var(--ty))';
   dot.title = `${RATING_LABEL[res.rating]} ${fmtMs(res.delta)}`;
-  dots.appendChild(dot);
-  while (dots.childElementCount > MAX_HITS) dots.removeChild(dots.firstChild);
+  return dot;
+}
+
+// Append the latest tap to the history strip: horizontal = time (newest on the
+// right), vertical = early/late, color = rating. Dots landing inside a blind
+// band pop in; trimming keeps the strip bounded (and drops emptied bands).
+function pushHit(res, container) {
+  const dots = root.querySelector('#hitDots');
+  if (!dots) return;
+  const target = container || dots;
+  const dot = makeDot(res);
+  if (target !== dots) dot.classList.add('hit-reveal');
+  target.appendChild(dot);
+  trimHistory();
+}
+
+function trimHistory() {
+  const dots = root.querySelector('#hitDots');
+  if (!dots) return;
+  const all = dots.querySelectorAll('.hit-dot'); // static snapshot, DOM order
+  for (let i = 0; all.length - i > MAX_HITS; i++) {
+    const parent = all[i].parentElement;
+    all[i].remove();
+    if (parent !== dots && parent.querySelectorAll('.hit-dot').length === 0) parent.remove();
+  }
+}
+
+// A tinted full-height band behind the dots from one blind window, so the muted
+// stretch is visible on the timeline.
+function createHistoryBand() {
+  const dots = root.querySelector('#hitDots');
+  if (!dots) return null;
+  const band = document.createElement('div');
+  band.className = 'hit-blind-band';
+  dots.appendChild(band);
+  return band;
+}
+
+// Reveal a whole blind window at once, dots cascading in left→right.
+function flushBlindWindowToHistory(taps) {
+  const band = createHistoryBand();
+  if (!band || !taps.length) return;
+  taps.slice(-MAX_HITS).forEach((res, i) => {
+    const dot = makeDot(res);
+    dot.classList.add('hit-reveal');
+    dot.style.animationDelay = `${Math.min(i * HIT_FLUSH_STAGGER_MS, 900)}ms`;
+    band.appendChild(dot);
+  });
+  trimHistory();
 }
 
 function clearHits() {
   const dots = root.querySelector('#hitDots');
   if (dots) dots.innerHTML = '';
+  if (blind) blind.historyBand = null;
 }
 
 function flashTapPad() {
