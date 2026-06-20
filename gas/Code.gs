@@ -5,8 +5,15 @@
  * Who has access: Anyone). See docs/GAS-SETUP.md in the repo.
  *
  * Storage layout:
- *  - "state" tab:    A1 = lastModified, B1..Bn = JSON blob chunks (<=45k chars each)
- *  - "sessions" tab: human-readable append-only log, one row per session
+ *  - "state" tab:    A1 = lastModified, B1..Bn = JSON blob chunks (<=45k chars
+ *                    each). This is the COMPLETE backup — the whole app state
+ *                    (settings, custom songs, every session) round-trips here,
+ *                    so any new field is captured automatically.
+ *  - "sessions" tab: human-readable append-only log, one row per session.
+ *  - "songs" tab:    human-readable snapshot of custom songs (rewritten each push).
+ *  - "settings" tab: human-readable snapshot of preferences/offsets (rewritten
+ *                    each push; secrets/API keys are kept out of this view but
+ *                    still live in the state blob).
  */
 
 var SECRET = 'CHANGE-ME-to-a-long-random-string';
@@ -69,6 +76,8 @@ function handlePush(state) {
     }
     writeState(state);
     appendNewSessions(remote, state);
+    writeSongs(state);
+    writeSettings(state);
     return { ok: true, stale: false };
   } finally {
     lock.releaseLock();
@@ -91,7 +100,9 @@ function appendNewSessions(oldState, newState) {
   if (sh.getLastRow() === 0) {
     sh.appendRow([
       'date', 'song', 'bpm', 'blindMode', 'grade', 'accuracy', 'score',
-      'meanDelta', 'stdDev', 'driftSlope', 'taps', 'blindAccuracy', 'blindStreak',
+      'meanDelta', 'stdDev', 'driftSlope', 'taps',
+      'perfect', 'good', 'okay', 'miss', 'extra',
+      'blindAccuracy', 'blindStreak', 'beatsSurvived',
     ]);
   }
   var known = {};
@@ -100,6 +111,8 @@ function appendNewSessions(oldState, newState) {
   });
   ((newState && newState.sessions) || []).forEach(function (s) {
     if (known[s.id]) return;
+    var c = s.counts || {};
+    var b = s.blind || null;
     sh.appendRow([
       new Date(s.date).toISOString(),
       s.songId,
@@ -112,8 +125,57 @@ function appendNewSessions(oldState, newState) {
       s.stdDev,
       s.driftSlope,
       s.tapCount,
-      s.blind ? s.blind.accuracy : '',
-      s.blind ? s.blind.longestStreak : '',
+      c.perfect != null ? c.perfect : '',
+      c.good != null ? c.good : '',
+      c.okay != null ? c.okay : '',
+      c.miss != null ? c.miss : '',
+      c.extra != null ? c.extra : '',
+      b ? b.accuracy : '',
+      b ? b.longestStreak : '',
+      b && b.beatsSurvived != null ? b.beatsSurvived : '',
     ]);
   });
+}
+
+// Readable snapshot of custom songs (rewritten in full each push).
+function writeSongs(state) {
+  var sh = sheet('songs');
+  sh.clearContents();
+  var rows = [['id', 'title', 'artist', 'bpm', 'startSec', 'videoId', 'created']];
+  ((state && state.customSongs) || []).forEach(function (s) {
+    rows.push([
+      s.id,
+      s.title,
+      s.artist,
+      s.bpm,
+      s.startSec || 0,
+      s.videoId,
+      s.createdAt ? new Date(s.createdAt).toISOString() : '',
+    ]);
+  });
+  sh.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+}
+
+// Readable snapshot of preferences/offsets (rewritten each push). Secrets and
+// API keys are intentionally omitted here — they remain in the state blob.
+function writeSettings(state) {
+  var sh = sheet('settings');
+  sh.clearContents();
+  var s = (state && state.settings) || {};
+  var cal = s.lastCalibration;
+  var rows = [
+    ['setting', 'value'],
+    ['inputOffset (ms)', s.inputOffset != null ? s.inputOffset : ''],
+    ['anchorTapCount', s.anchorTapCount != null ? s.anchorTapCount : ''],
+    ['lastBlindMode', s.lastBlindMode || 'off'],
+    ['polyrhythm', s.polyrhythm ? 'on' : 'off'],
+    ['clapSensitivity', s.clapSensitivity != null ? s.clapSensitivity : ''],
+    ['lastCalibration', cal ? cal.offset + 'ms +/-' + cal.stdDev + 'ms on ' + new Date(cal.date).toISOString().slice(0, 10) : ''],
+    ['customSongs', ((state && state.customSongs) || []).length],
+    ['sessions', ((state && state.sessions) || []).length],
+    ['videoOverrides', Object.keys(s.videoOverrides || {}).length],
+    ['startOverrides', Object.keys(s.startOverrides || {}).length],
+    ['lastModified', state && state.lastModified ? new Date(state.lastModified).toISOString() : ''],
+  ];
+  sh.getRange(1, 1, rows.length, 2).setValues(rows);
 }

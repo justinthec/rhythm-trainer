@@ -37,8 +37,22 @@ That's it. From now on:
 - Every session you finish is pushed automatically (debounced ~3s).
 - On app load, the newest copy wins — play on your laptop, then your phone,
   and the data follows you.
-- The `sessions` tab in the Sheet is a human-readable log you can chart
-  with normal spreadsheet tools; the `state` tab is the app's raw data.
+
+The script populates these tabs in your Sheet:
+
+- **`state`** — the complete backup: the entire app state as a JSON blob
+  (every setting, custom song, and session). Restoring from this brings
+  back *everything*. Not meant for human reading.
+- **`sessions`** — append-only, human-readable log: one row per finished
+  session with grade, accuracy, score, timing (mean/σ/drift), the
+  perfect/good/okay/miss/extra counts, and Flying-Blind stats incl. beats
+  survived. Chart it with normal spreadsheet tools.
+- **`songs`** — your custom songs (title, artist, BPM, start timestamp,
+  video ID), rewritten on each sync.
+- **`settings`** — your preferences (input offset, anchor taps, last blind
+  mode, polyrhythm, clap sensitivity, last calibration) and counts of
+  custom songs / sessions / overrides. API keys and the sync secret are
+  kept out of this readable tab (they still live in `state`).
 
 ## Updating the script later
 
