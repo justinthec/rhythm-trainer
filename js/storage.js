@@ -3,6 +3,11 @@
 
 const KEY = 'rhythmTrainer.v1';
 
+// Default cloud-sync endpoint so the app can be opened on any device and just
+// needs the secret entered. A non-empty gasUrl in settings overrides this.
+export const DEFAULT_GAS_URL =
+  'https://script.google.com/macros/s/AKfycbx46rHejHRW0uUCX0JSJa_b1tptUkNLsKk0Nuhp3Q0-OltB1XkUH9Z6eBqdcL_RO9CTkA/exec';
+
 const DEFAULT_STATE = {
   schemaVersion: 1,
   lastModified: 0,
@@ -68,11 +73,14 @@ function persist() {
   for (const fn of listeners) fn(state);
 }
 
-// All mutations go through here so lastModified and sync stay correct.
-export function update(mutator) {
+// All mutations go through here so lastModified and sync stay correct. Pass
+// { touch: false } for device-local connection settings (gasUrl/gasSecret) so
+// entering them doesn't bump the data timestamp — otherwise a fresh device that
+// just typed the secret would look "newer" and overwrite the real cloud data.
+export function update(mutator, { touch = true } = {}) {
   load();
   mutator(state);
-  state.lastModified = Date.now();
+  if (touch) state.lastModified = Date.now();
   persist();
   return state;
 }

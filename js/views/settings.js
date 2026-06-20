@@ -1,6 +1,6 @@
 // Settings: input offset + calibration mini-game, sync config, export/import.
 
-import { getData, update, exportJSON, importJSON, getStorageWarning } from '../storage.js';
+import { getData, update, exportJSON, importJSON, getStorageWarning, DEFAULT_GAS_URL } from '../storage.js';
 import { testConnection, pullOnLoad, getSyncStatus, onSyncStatus } from '../sync.js';
 import { createCalibration } from '../calibration.js';
 
@@ -53,7 +53,7 @@ export function render(el) {
     <p class="hint">Free, no account system: your data syncs to your own Google Sheet via Apps Script. <a href="docs/GAS-SETUP.md" target="_blank">Setup guide</a> (5 minutes, one time).</p>
     <div class="form-grid">
       <label>Apps Script Web App URL
-        <input id="gasUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(s.gasUrl)}">
+        <input id="gasUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(s.gasUrl || DEFAULT_GAS_URL)}">
       </label>
       <label>Shared secret
         <input id="gasSecret" type="password" placeholder="same SECRET as in Code.gs" value="${esc(s.gasSecret)}">
@@ -91,9 +91,16 @@ export function render(el) {
   el.querySelector('#getSongBpmKey').addEventListener('change', (e) => update((d) => (d.settings.getSongBpmKey = e.target.value.trim())));
   el.querySelector('#youtubeApiKey').addEventListener('change', (e) => update((d) => (d.settings.youtubeApiKey = e.target.value.trim())));
 
-  // Sync fields.
-  el.querySelector('#gasUrl').addEventListener('change', (e) => update((d) => (d.settings.gasUrl = e.target.value.trim())));
-  el.querySelector('#gasSecret').addEventListener('change', (e) => update((d) => (d.settings.gasSecret = e.target.value.trim())));
+  // Sync connection fields. touch:false so typing the URL/secret doesn't bump
+  // the data timestamp (which would make a freshly-set-up device clobber the
+  // cloud data). Entering the secret pulls immediately to restore remote data.
+  el.querySelector('#gasUrl').addEventListener('change', (e) =>
+    update((d) => (d.settings.gasUrl = e.target.value.trim()), { touch: false })
+  );
+  el.querySelector('#gasSecret').addEventListener('change', (e) => {
+    update((d) => (d.settings.gasSecret = e.target.value.trim()), { touch: false });
+    if (e.target.value.trim()) pullOnLoad().then(() => render(el));
+  });
 
   const syncStatusEl = el.querySelector('#syncStatus');
   const renderStatus = (st) => {

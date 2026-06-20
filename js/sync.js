@@ -3,7 +3,7 @@
 // "simple" requests and skips the CORS preflight (which GAS cannot answer).
 // The GAS web app 302-redirects to googleusercontent.com; fetch follows it.
 
-import { getData, replace, onChange } from './storage.js';
+import { getData, replace, onChange, DEFAULT_GAS_URL } from './storage.js';
 
 let pushTimer = null;
 let status = { state: 'idle', message: 'Sync not configured', at: null };
@@ -25,7 +25,8 @@ export function onSyncStatus(fn) {
 
 function config() {
   const { gasUrl, gasSecret } = getData().settings;
-  return gasUrl && gasSecret ? { gasUrl, gasSecret } : null;
+  const url = (gasUrl || DEFAULT_GAS_URL || '').trim();
+  return url && gasSecret ? { gasUrl: url, gasSecret } : null;
 }
 
 async function call(action, payload = {}) {
