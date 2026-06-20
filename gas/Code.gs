@@ -30,8 +30,10 @@ function doPost(e) {
       out = { ok: true, pong: true };
     } else if (req.action === 'pull') {
       out = { ok: true, state: readState() };
+    } else if (req.action === 'sync') {
+      out = handleSync(req.state);
     } else if (req.action === 'push') {
-      out = handlePush(req.state);
+      out = handlePush(req.state, req.force);
     } else {
       out = { ok: false, error: 'Unknown action: ' + req.action };
     }
@@ -62,17 +64,38 @@ function readState() {
   }
 }
 
-function handlePush(state) {
+// Merge the incoming device state with the stored cloud state and persist the
+// union (atomic under a script lock). Returns the merged state for the client
+// to adopt, so both sides converge without losing history.
+function handleSync(incoming) {
+  if (!incoming || typeof incoming !== 'object') return { ok: false, error: 'No state' };
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var stored = readState();
+    var merged = stored ? mergeStates(stored, incoming) : incoming;
+    writeState(merged);
+    appendNewSessions(stored, merged);
+    writeSongs(merged);
+    writeSettings(merged);
+    return { ok: true, state: merged };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Overwrite the cloud with the incoming state. With force=true this replaces
+// unconditionally (used by "Push" to propagate deletions). Without force it
+// keeps the old last-write-wins guard.
+function handlePush(state, force) {
   if (!state || typeof state !== 'object') return { ok: false, error: 'No state' };
   var lock = LockService.getScriptLock();
-  lock.waitLock(10000);
+  lock.waitLock(15000);
   try {
     var remote = readState();
-    var remoteLM = remote && remote.lastModified ? remote.lastModified : 0;
-    var localLM = state.lastModified || 0;
-    if (remoteLM > localLM) {
-      // Client is stale — hand back the newer remote state instead.
-      return { ok: true, stale: true, state: remote };
+    if (!force) {
+      var remoteLM = remote && remote.lastModified ? remote.lastModified : 0;
+      if (remoteLM > (state.lastModified || 0)) return { ok: true, stale: true, state: remote };
     }
     writeState(state);
     appendNewSessions(remote, state);
@@ -82,6 +105,65 @@ function handlePush(state) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// --- merge ---------------------------------------------------------------
+
+function mergeStates(a, b) {
+  // a = stored (cloud), b = incoming (this device).
+  var deleted = {};
+  (a.deletedIds || []).forEach(function (id) { deleted[id] = true; });
+  (b.deletedIds || []).forEach(function (id) { deleted[id] = true; });
+  return {
+    schemaVersion: 1,
+    lastModified: Math.max(a.lastModified || 0, b.lastModified || 0),
+    deletedIds: keys(deleted),
+    sessions: unionById(a.sessions, b.sessions, deleted),
+    customSongs: unionById(a.customSongs, b.customSongs, deleted),
+    settings: mergeSettings(a, b),
+  };
+}
+
+// Union two lists keyed by id; incoming (second) wins on collision; drop
+// anything tombstoned; sort by date/createdAt.
+function unionById(listA, listB, deleted) {
+  var byId = {};
+  (listA || []).forEach(function (x) { if (x && x.id) byId[x.id] = x; });
+  (listB || []).forEach(function (x) { if (x && x.id) byId[x.id] = x; });
+  var out = [];
+  keys(byId).forEach(function (id) { if (!deleted[id]) out.push(byId[id]); });
+  out.sort(function (x, y) { return (x.date || x.createdAt || 0) - (y.date || y.createdAt || 0); });
+  return out;
+}
+
+// Newer side wins per field; never let an empty credential clobber a set one;
+// override maps are unioned.
+function mergeSettings(a, b) {
+  var aNewer = (a.lastModified || 0) >= (b.lastModified || 0);
+  var older = (aNewer ? b.settings : a.settings) || {};
+  var newer = (aNewer ? a.settings : b.settings) || {};
+  var out = {};
+  var k;
+  for (k in older) out[k] = older[k];
+  for (k in newer) out[k] = newer[k];
+  ['gasSecret', 'getSongBpmKey', 'youtubeApiKey', 'gasUrl'].forEach(function (key) {
+    if (!out[key]) out[key] = newer[key] || older[key] || '';
+  });
+  ['videoOverrides', 'startOverrides'].forEach(function (key) {
+    var m = {}, src, i;
+    src = (a.settings && a.settings[key]) || {};
+    for (i in src) m[i] = src[i];
+    src = (b.settings && b.settings[key]) || {};
+    for (i in src) m[i] = src[i];
+    out[key] = m;
+  });
+  return out;
+}
+
+function keys(obj) {
+  var out = [];
+  for (var k in obj) if (obj.hasOwnProperty(k)) out.push(k);
+  return out;
 }
 
 function writeState(state) {

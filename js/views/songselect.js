@@ -1,7 +1,7 @@
 // Song select view: seed catalog + custom songs + add-song form.
 
 import { SEED_SONGS, parseYouTubeId, parseTimestamp } from '../songs.js';
-import { getData, update, newId } from '../storage.js';
+import { getData, update, newId, deleteCustomSong } from '../storage.js';
 import { searchSongBpm, fetchTempo, searchYouTube, hasBpmKey, hasYouTubeKey, GETSONGBPM_CREDIT } from '../lookup.js';
 
 export function render(el) {
@@ -65,9 +65,7 @@ export function render(el) {
         e.preventDefault();
         e.stopPropagation();
         if (confirm(`Remove "${song.title}"?`)) {
-          update((d) => {
-            d.customSongs = d.customSongs.filter((c) => c.id !== song.id);
-          });
+          deleteCustomSong(song.id);
           render(el);
         }
       });

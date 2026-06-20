@@ -1,6 +1,6 @@
 // Dashboard: aggregate stats, accuracy trend, per-song bests, session history.
 
-import { getData } from '../storage.js';
+import { getData, deleteSession } from '../storage.js';
 import { findSong } from '../songs.js';
 import { drawHistogram, drawTrendChart } from '../charts.js';
 import { HISTOGRAM_BINS } from '../engine.js';
@@ -75,7 +75,7 @@ export function render(el) {
 
     <h2>Recent sessions</h2>
     <table class="session-table">
-      <thead><tr><th>Date</th><th>Song</th><th>Mode</th><th>Grade</th><th>Acc</th><th>Mean</th><th>σ</th><th>Verdict</th></tr></thead>
+      <thead><tr><th>Date</th><th>Song</th><th>Mode</th><th>Grade</th><th>Acc</th><th>Mean</th><th>σ</th><th>Verdict</th><th></th></tr></thead>
       <tbody>
         ${sessions
           .slice(-15)
@@ -92,6 +92,7 @@ export function render(el) {
               <td>${s.meanDelta > 0 ? '+' : ''}${s.meanDelta}ms</td>
               <td>±${s.stdDev}ms</td>
               <td>${verdict}</td>
+              <td><button class="row-del" data-id="${esc(s.id)}" title="Delete this session">×</button></td>
             </tr>`;
           })
           .join('')}
@@ -101,6 +102,15 @@ export function render(el) {
 
   drawTrendChart(el.querySelector('#trendChart'), sessions.map((s) => s.accuracy));
   drawHistogram(el.querySelector('#aggHist'), aggHist);
+
+  el.querySelectorAll('.row-del').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      if (confirm('Delete this session from your history?')) {
+        deleteSession(btn.dataset.id);
+        render(el);
+      }
+    })
+  );
 }
 
 function esc(s) {

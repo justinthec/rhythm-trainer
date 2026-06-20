@@ -50,6 +50,14 @@ main { max-width: 880px; margin: 0 auto; padding: 1.2rem; }
   touch-action: manipulation; -webkit-user-select: none; user-select: none;
 }
 .btn:hover { border-color: var(--muted); }
+.sync-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.checkbox-row { display: flex; flex-direction: row; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: var(--text); }
+.checkbox-row input { width: auto; }
+.row-del {
+  border: none; background: transparent; color: var(--muted); cursor: pointer;
+  font-size: 1.1rem; line-height: 1; padding: 0 0.3rem; border-radius: 4px;
+}
+.row-del:hover { color: var(--miss); background: rgba(255, 90, 90, 0.12); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #08130c; font-weight: 700; }
 .btn.primary:hover { filter: brightness(1.1); }
 .btn.big { font-size: 1.2rem; padding: 0.8rem 2.4rem; }

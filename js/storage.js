@@ -23,9 +23,11 @@ const DEFAULT_STATE = {
     getSongBpmKey: '', // getsongbpm.com API key (BPM lookup)
     youtubeApiKey: '', // YouTube Data API v3 key (video search)
     polyrhythm: false, // experimental: accept triplet-grid taps too
+    autoSync: true, // push automatically (debounced) after each change
   },
   customSongs: [],
   sessions: [],
+  deletedIds: [], // tombstones (session/song ids) so deletes survive a merge
 };
 
 let state = null;
@@ -37,6 +39,7 @@ function deepMergeDefaults(target, defaults) {
   out.settings = { ...defaults.settings, ...(target.settings || {}) };
   out.customSongs = Array.isArray(target.customSongs) ? target.customSongs : [];
   out.sessions = Array.isArray(target.sessions) ? target.sessions : [];
+  out.deletedIds = Array.isArray(target.deletedIds) ? target.deletedIds : [];
   return out;
 }
 
@@ -129,6 +132,22 @@ export function importJSON(text) {
 export function addSession(session) {
   return update((s) => {
     s.sessions.push(session);
+  });
+}
+
+// Deleting records a tombstone so a later merge won't resurrect the item from
+// another device's copy. Tombstone ids are unioned across devices on sync.
+export function deleteSession(id) {
+  return update((s) => {
+    s.sessions = s.sessions.filter((x) => x.id !== id);
+    if (!s.deletedIds.includes(id)) s.deletedIds.push(id);
+  });
+}
+
+export function deleteCustomSong(id) {
+  return update((s) => {
+    s.customSongs = s.customSongs.filter((x) => x.id !== id);
+    if (!s.deletedIds.includes(id)) s.deletedIds.push(id);
   });
 }
 

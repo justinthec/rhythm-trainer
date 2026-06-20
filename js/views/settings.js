@@ -1,7 +1,7 @@
 // Settings: input offset + calibration mini-game, sync config, export/import.
 
 import { getData, update, exportJSON, importJSON, getStorageWarning, DEFAULT_GAS_URL } from '../storage.js';
-import { testConnection, pullOnLoad, getSyncStatus, onSyncStatus } from '../sync.js';
+import { testConnection, syncMerge, pushReplace, pullReplace, getSyncStatus, onSyncStatus } from '../sync.js';
 import { createCalibration } from '../calibration.js';
 
 let calib = null;
@@ -58,10 +58,16 @@ export function render(el) {
       <label>Shared secret
         <input id="gasSecret" type="password" placeholder="same SECRET as in Code.gs" value="${esc(s.gasSecret)}">
       </label>
-      <div>
+      <label class="checkbox-row">
+        <input type="checkbox" id="autoSync" ${s.autoSync !== false ? 'checked' : ''}> Auto-sync after each change
+      </label>
+      <div class="sync-buttons">
         <button id="testBtn" class="btn">Test connection</button>
-        <button id="pullBtn" class="btn">Pull now</button>
+        <button id="syncBtn" class="btn">🔄 Sync (merge)</button>
+        <button id="pushBtn" class="btn">⬆ Push (replace cloud)</button>
+        <button id="pullBtn" class="btn">⬇ Pull (replace local)</button>
       </div>
+      <p class="hint"><strong>Sync</strong> merges both ways (nothing lost). <strong>Push</strong> makes the cloud match this device (sends deletions). <strong>Pull</strong> makes this device match the cloud.</p>
       <div id="syncStatus" class="hint"></div>
     </div>
 
@@ -93,14 +99,17 @@ export function render(el) {
 
   // Sync connection fields. touch:false so typing the URL/secret doesn't bump
   // the data timestamp (which would make a freshly-set-up device clobber the
-  // cloud data). Entering the secret pulls immediately to restore remote data.
+  // cloud data). Entering the secret merge-syncs to bring down remote data.
   el.querySelector('#gasUrl').addEventListener('change', (e) =>
     update((d) => (d.settings.gasUrl = e.target.value.trim()), { touch: false })
   );
   el.querySelector('#gasSecret').addEventListener('change', (e) => {
     update((d) => (d.settings.gasSecret = e.target.value.trim()), { touch: false });
-    if (e.target.value.trim()) pullOnLoad().then(() => render(el));
+    if (e.target.value.trim()) syncMerge().then(() => render(el)).catch(() => render(el));
   });
+  el.querySelector('#autoSync').addEventListener('change', (e) =>
+    update((d) => (d.settings.autoSync = e.target.checked), { touch: false })
+  );
 
   const syncStatusEl = el.querySelector('#syncStatus');
   const renderStatus = (st) => {
@@ -118,7 +127,15 @@ export function render(el) {
       syncStatusEl.textContent = `Connection failed: ${e2.message}`;
     }
   });
-  el.querySelector('#pullBtn').addEventListener('click', () => pullOnLoad().then(() => render(el)));
+  el.querySelector('#syncBtn').addEventListener('click', () => syncMerge().then(() => render(el)).catch(() => {}));
+  el.querySelector('#pushBtn').addEventListener('click', () => {
+    if (!confirm('Replace the cloud copy with THIS device’s data?\n\nAnything that exists only in the cloud (e.g. sessions from another device not yet synced here) will be removed. This also sends your deletions.')) return;
+    pushReplace().catch(() => {});
+  });
+  el.querySelector('#pullBtn').addEventListener('click', () => {
+    if (!confirm('Replace THIS device’s data with the cloud copy?\n\nUnsynced local changes will be lost.')) return;
+    pullReplace().then(() => render(el)).catch(() => {});
+  });
 
   // Export / import.
   el.querySelector('#exportBtn').addEventListener('click', () => {
