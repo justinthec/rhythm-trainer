@@ -1,6 +1,6 @@
 // main.js — boot + hash router.
 
-import { load } from './storage.js';
+import { load, update } from './storage.js';
 import { startSync } from './sync.js';
 import * as songselect from './views/songselect.js';
 import * as game from './views/game.js';
@@ -18,6 +18,25 @@ const routes = [
 let currentView = null;
 const main = document.getElementById('app');
 
+// Let the lookup API keys be seeded from the URL, e.g.
+//   …/?bpmKey=ABC123&ytKey=XYZ#/freeplay
+// Handy for loading the app pre-configured. The keys are saved to settings,
+// then stripped from the URL so they don't linger in history or the address bar.
+function applyKeyParams() {
+  const params = new URLSearchParams(location.search);
+  const bpmKey = params.get('bpmKey');
+  const ytKey = params.get('ytKey');
+  if (bpmKey == null && ytKey == null) return;
+  update((d) => {
+    if (bpmKey != null) d.settings.getSongBpmKey = bpmKey.trim();
+    if (ytKey != null) d.settings.youtubeApiKey = ytKey.trim();
+  });
+  params.delete('bpmKey');
+  params.delete('ytKey');
+  const qs = params.toString();
+  history.replaceState(null, '', location.pathname + (qs ? `?${qs}` : '') + location.hash);
+}
+
 function route() {
   const hash = location.hash || '#/select';
   const match = routes.find((r) => r.pattern.test(hash));
@@ -34,6 +53,7 @@ function route() {
 }
 
 load();
+applyKeyParams();
 startSync();
 window.addEventListener('hashchange', route);
 route();
